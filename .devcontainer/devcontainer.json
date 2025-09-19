@@ -1,0 +1,25 @@
+{
+    "name": "Dusk Standard Dev Container",
+    "forwardPorts": [9229],
+    "build": {
+        "dockerfile": "../Dockerfile",
+        "context": "..",
+        "target": "dev",
+        "args": {
+            "NODE_ENV": "development"
+        }
+    },
+    "customizations": { 
+        "vscode": { 
+            "extensions": [
+                "ms-python.python",
+                "ms-azuretools.vscode-docker",
+                "golang.Go",
+                "1Password.op-vscode",
+                "ms-vscode.vscode-typescript-next",
+                "ms-vscode.js-debug-nightly",
+                "Orta.vscode-jest"
+            ] 
+        } 
+    }
+}
