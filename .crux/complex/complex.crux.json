@@ -3,18 +3,12 @@
         "req": {
             "headers": {
                 "policy": "warn",
-                "required": [],
-                "forbidden": [],
                 "schema": {
                     "authorization": {
                         "scheme": "Bearer",
                         "pattern": "^[A-Za-z0-9._-]{20,}$"
                     },
-                    "content-type": {
-                        "oneof": [
-                            "application/json"
-                        ]
-                    }
+                    "content-type": "application/json"
                 }
             }
         },

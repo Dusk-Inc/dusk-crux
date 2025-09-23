@@ -48,6 +48,7 @@ The feature will take in the JSON files from the .crux folder at the root of the
             "name": "test_2",
             "description": "example of using xml as body data",
             "req": {
+                "method": "get",
                 "headers": {
                     "schema": {
                         "content-type": "application/xml"
@@ -68,6 +69,7 @@ The feature will take in the JSON files from the .crux folder at the root of the
             "name": "test_3",
             "description": "example of error response",
             "req": {
+                "method": "get",
                 "headers": {
                     "policy": "strict",
                     "schema": {

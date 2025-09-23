@@ -1,6 +1,6 @@
-import { ValidationIssue, CruxConfig, ValidationSummaryModel, ValidationIssueModel } from "./validator.models";
-import { ValidationSeverity, PolicyMode, ValidationCode } from "./validator.enum";
-import { statusForbidsBody, toLowerKeys, isValidHttpStatus, extractPathParamsFromDir } from "../utils/utils";
+import { ValidationIssue, CruxConfig, ValidationSummaryModel, ValidationIssueModel, FsOptions, RunOptions } from "./validator.models";
+import { ValidationSeverity, PolicyMode, ValidationCode, HttpMethod } from "./validator.enum";
+import { statusForbidsBody, isValidHttpStatus, extractPathParamsFromDir } from "../utils/utils";
 import { fileExistsSync } from "../utils/utils";
 import * as fs from "fs";
 
@@ -69,6 +69,23 @@ export function validateStatusPresenceAndValidity(cfg: CruxConfig): ValidationIs
   });
   return issues;
 }
+
+export function validateReqMethodPresenceAndValidity(cfg: CruxConfig): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  cfg.actions?.forEach((a, i) => {
+    const method = a.req?.method as any;
+    if (method === undefined) {
+      issues.push({ severity: ValidationSeverity.ERROR, code: ValidationCode.METHOD_MISSING, message: "req.method is required.", path: `actions[${i}].req.method` });
+      return;
+    }
+    const allowed = new Set<string>(Object.values(HttpMethod));
+    if (typeof method !== "string" || !allowed.has(method)) {
+      issues.push({ severity: ValidationSeverity.ERROR, code: ValidationCode.METHOD_INVALID, message: `Invalid HTTP method '${method}'.`, path: `actions[${i}].req.method` });
+    }
+  });
+  return issues;
+}
+
 export function validateResponseBodyFileBasics(cfg: CruxConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   cfg.actions?.forEach((a, i) => {
@@ -92,36 +109,6 @@ export function validateResponseBodyFileBasics(cfg: CruxConfig): ValidationIssue
   return issues;
 }
 
-function mergedHeaderSchemas(globalPolicy?: any, localPolicy?: any): Record<string, any> | null {
-  const g = (globalPolicy?.schemas ?? globalPolicy?.schema) as any;
-  const l = (localPolicy?.schemas ?? localPolicy?.schema) as any;
-  const gg = toLowerKeys(g || undefined) || {};
-  const ll = toLowerKeys(l || undefined) || {};
-  return { ...gg, ...ll };
-}
-
-function oneOfListForContentType(schemas: Record<string, any> | null): string[] {
-  if (!schemas) return [];
-  const ct = schemas["content-type"];
-  if (!ct) return [];
-  const one = (ct.oneOf ?? ct.oneof) as any;
-  return Array.isArray(one) ? one : [];
-}
-
-export function validateReqHeaderContentTypeAgainstSchema(cfg: CruxConfig): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  cfg.actions?.forEach((a, i) => {
-    const globalSchemas = toLowerKeys((cfg.globals?.req?.headers?.schemas ?? cfg.globals?.req?.headers?.schema) as any) || {};
-    const allowed = oneOfListForContentType(globalSchemas as Record<string, any>);
-    const localSchema = toLowerKeys((a.req?.headers?.schemas ?? a.req?.headers?.schema) as any) || {};
-    const ct = (localSchema as any)["content-type"];
-    if (typeof ct === "string" && allowed.length > 0 && !allowed.includes(ct)) {
-      issues.push({ severity: ValidationSeverity.WARNING, code: ValidationCode.REP_CT_NOT_IN_SCHEMA, message: `Request content-type '${ct}' not listed in headers schema oneOf.`, path: `actions[${i}].req.headers.schema['content-type']` });
-    }
-  });
-  return issues;
-}
-
 export function validateHeaderPolicyEnums(cfg: CruxConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   cfg.actions?.forEach((a, i) => {
@@ -131,12 +118,6 @@ export function validateHeaderPolicyEnums(cfg: CruxConfig): ValidationIssue[] {
     }
   });
   return issues;
-}
-
-
-export interface FsOptions {
-  checkFilesExist?: boolean;
-  baseDir?: string;
 }
 
 export function validateBodyFilesExist(cfg: CruxConfig, opts: FsOptions): ValidationIssue[] {
@@ -156,7 +137,6 @@ export function validateBodyFilesExist(cfg: CruxConfig, opts: FsOptions): Valida
   return issues;
 }
 
-
 export function validateParamsSubsetOfPath(cfg: CruxConfig, actionDirs: string[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   cfg.actions?.forEach((a, i) => {
@@ -171,21 +151,15 @@ export function validateParamsSubsetOfPath(cfg: CruxConfig, actionDirs: string[]
   return issues;
 }
 
-export interface RunOptions {
-  checkFilesExist?: boolean;
-  bodyFilesBaseDir?: string;
-  actionDirs?: string[];
-}
-
 export function validateConfig(cfg: CruxConfig, opts: RunOptions = {}): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   issues.push(...validateNonEmptyActions(cfg));
   issues.push(...validateUniqueActionNames(cfg));
   issues.push(...validateUniqueActionDescriptions(cfg));
   issues.push(...validateReqResPresence(cfg));
+  issues.push(...validateReqMethodPresenceAndValidity(cfg));
   issues.push(...validateStatusPresenceAndValidity(cfg));
   issues.push(...validateResponseBodyFileBasics(cfg));
-  issues.push(...validateReqHeaderContentTypeAgainstSchema(cfg));
   issues.push(...validateHeaderPolicyEnums(cfg));
   if (opts.actionDirs) issues.push(...validateParamsSubsetOfPath(cfg, opts.actionDirs));
   

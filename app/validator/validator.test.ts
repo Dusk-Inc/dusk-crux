@@ -24,8 +24,8 @@ function expectIssue(issues: Array<{code: string}>, code: ValidationCode) {
   expect(issues.some(i => i.code === code)).toBe(true);
 }
 
-describe("ValidateResponseData → valid minimal payload → ok:true", () => {
-  test("arrange valid headers & response, act validate, assert ok", () => {
+describe("ValidateResponseData", () => {
+  test("valid_minimal_payload__ok_true", () => {
     const contentTypeHeader: HeaderModel = {
       headerName: "content-type",
       headerValue: "application/json"
@@ -48,14 +48,14 @@ describe("ValidateResponseData → valid minimal payload → ok:true", () => {
 });
 
 
-describe("validateConfig - core rules", () => {
-  test("validateConfig → empty actions → ACTIONS_EMPTY", () => {
+describe("validateConfig", () => {
+  test("empty_actions__ACTIONS_EMPTY", () => {
     const cfg: CruxConfig = { actions: [] } as any;
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.ACTIONS_EMPTY);
   });
 
-  test("validateConfig → missing name → ACTION_NAME_MISSING", () => {
+  test("missing_name__ACTION_NAME_MISSING", () => {
     const cfg: CruxConfig = {
       actions: [ { description: "d", req: {}, res: { status: 200, bodyFile: null } as any } ] as any
     };
@@ -63,7 +63,7 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.ACTION_NAME_MISSING);
   });
 
-  test("validateConfig → missing description → ACTION_DESC_MISSING", () => {
+  test("missing_description__ACTION_DESC_MISSING", () => {
     const cfg: CruxConfig = {
       actions: [ { name: "a", req: {}, res: { status: 200, bodyFile: null } as any } ] as any
     };
@@ -71,7 +71,7 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.ACTION_DESC_MISSING);
   });
 
-  test("validateConfig → duplicate action names → ACTION_NAME_DUP", () => {
+  test("duplicate_action_names__ACTION_NAME_DUP", () => {
     const cfg: CruxConfig = {
       actions: [
         { name: "dup", description: "one", req: {}, res: { status: 200, bodyFile: null } as any },
@@ -82,7 +82,7 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.ACTION_NAME_DUP);
   });
 
-  test("validateConfig → duplicate action descriptions → ACTION_DESC_DUP", () => {
+  test("duplicate_action_descriptions__ACTION_DESC_DUP", () => {
     const cfg: CruxConfig = {
       actions: [
         { name: "a", description: "same", req: {}, res: { status: 200, bodyFile: null } as any },
@@ -93,7 +93,7 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.ACTION_DESC_DUP);
   });
 
-  test("validateConfig → missing req/res → REQ_MISSING & RES_MISSING", () => {
+  test("missing_req_res__REQ_MISSING_and_RES_MISSING", () => {
     const cfg: CruxConfig = {
       actions: [ { name: "a", description: "d" } as any ]
     };
@@ -102,7 +102,7 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.RES_MISSING);
   });
 
-  test("validateConfig → missing/invalid status → STATUS_MISSING or STATUS_INVALID", () => {
+  test("missing_or_invalid_status__STATUS_MISSING_or_STATUS_INVALID", () => {
     const missing: CruxConfig = {
       actions: [ { name: "a", description: "d", req: {}, res: {} as any } ]
     } as any;
@@ -114,7 +114,7 @@ describe("validateConfig - core rules", () => {
     const invalidIssues = validateConfig(invalid);
     expectIssue(invalidIssues, ValidationCode.STATUS_INVALID);
   });
-  test("validateConfig → status allows body but res.bodyFile missing → RES_BODYFILE_KEY_MISSING", () => {
+  test("status_allows_body_but_bodyFile_missing__RES_BODYFILE_KEY_MISSING", () => {
     const cfg: CruxConfig = {
       actions: [
         { name: "a", description: "d", req: {}, res: { status: 200 } as any }
@@ -124,7 +124,7 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.RES_BODYFILE_KEY_MISSING);
   });
 
-  test("validateConfig → 204 with bodyFile present → STATUS_FORBIDS_BODY", () => {
+  test("status_204_with_bodyFile__STATUS_FORBIDS_BODY", () => {
     const cfg = baseConfig();
     cfg.actions[0].res!.status = 204;
     cfg.actions[0].res!.bodyFile = "x.json";
@@ -132,7 +132,7 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.STATUS_FORBIDS_BODY);
   });
 
-  test("validateConfig → bodyFile wrong type → RES_BODYFILE_TYPE", () => {
+  test("bodyFile_wrong_type__RES_BODYFILE_TYPE", () => {
     const cfg: CruxConfig = {
       actions: [ { name: "a", description: "d", req: {}, res: { status: 200, bodyFile: 123 } as any } ]
     } as any;
@@ -140,7 +140,7 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.RES_BODYFILE_TYPE);
   });
 
-  test("validateConfig → bodyFile empty string → RES_BODYFILE_EMPTY", () => {
+  test("bodyFile_empty_string__RES_BODYFILE_EMPTY", () => {
     const cfg: CruxConfig = {
       actions: [ { name: "a", description: "d", req: {}, res: { status: 200, bodyFile: "" } } ]
     } as any;
@@ -148,29 +148,14 @@ describe("validateConfig - core rules", () => {
     expectIssue(issues, ValidationCode.RES_BODYFILE_EMPTY);
   });
 
-  test("validateConfig → req.headers.schema content-type not in globals oneOf → REP_CT_NOT_IN_SCHEMA (warn)", () => {
-    const cfg = baseConfig();
-    cfg.globals = {
-      req: { headers: { schemas: { "content-type": { oneOf: ["application/json"] } } } },
-      res: { status: 200 }
-    } as any;
-    cfg.actions[0].req = {
-      headers: {
-        schema: { "content-type": "application/xml" }
-      }
-    } as any;
-    const issues = validateConfig(cfg);
-    expectIssue(issues, ValidationCode.REP_CT_NOT_IN_SCHEMA);
-  });
-
-  test("validateConfig → param not in route path → PARAM_NOT_IN_PATH", () => {
+  test("param_not_in_route_path__PARAM_NOT_IN_PATH", () => {
     const cfg = baseConfig();
     cfg.actions[0].req = { params: { id: 1, stray: 2 } } as any;
     const issues = validateConfig(cfg, { actionDirs: ["/api/users/:id"] });
     expectIssue(issues, ValidationCode.PARAM_NOT_IN_PATH);
   });
 
-  test("validateConfig → bodyFile missing with check enabled → BODYFILE_MISSING", () => {
+  test("bodyFile_missing_with_check_enabled__BODYFILE_MISSING", () => {
     const spy = jest.spyOn(utils, "fileExistsSync").mockReturnValue(false);
     try {
       const cfg = baseConfig();
@@ -181,19 +166,25 @@ describe("validateConfig - core rules", () => {
     }
   });
 
-  test("validateConfig → invalid header policy → POLICY_INVALID", () => {
+  test("invalid_header_policy__POLICY_INVALID", () => {
     const cfg = baseConfig();
     cfg.actions[0].req = { headers: { policy: "invalid" as any } };
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.POLICY_INVALID);
   });
 
-  test("validateConfig → res.status fallback from globals.res.status → no STATUS_MISSING", () => {
+  test("status_fallback_from_globals__no_STATUS_MISSING", () => {
     const cfg: CruxConfig = {
       globals: { res: { status: 201 } } as any,
       actions: [ { name: "a", description: "d", req: {}, res: {} as any } ]
     } as any;
     const issues = validateConfig(cfg);
     expect(issues.some(i => i.code === ValidationCode.STATUS_MISSING)).toBe(false);
+  });
+
+  test("missing_req_method__METHOD_MISSING", () => {
+    const cfg = baseConfig();
+    const issues = validateConfig(cfg);
+    expectIssue(issues, ValidationCode.METHOD_MISSING);
   });
 });

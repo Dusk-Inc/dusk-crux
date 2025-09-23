@@ -91,6 +91,18 @@ class OrderStatus(str, Enum):
     - TypeScript: users.core.ts, users.test.ts
     - Go: core.go, users_test.go
 
+Tests:
+```ts
+describe("<function_name>", () => {
+    it("<does_meet_condition>__<gives_response>")
+})
+```
+
+```python
+def test_<function_name>__<condition>__<response>():
+```
+
+
 ## File Structure (per feature)
 Each feature lives under src/ (TS/Go) or app/ (Python).
 - index – re-export public API.

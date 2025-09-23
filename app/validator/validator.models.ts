@@ -76,3 +76,14 @@ export interface ValidationSummaryModel {
   ok: boolean;
   issues: ValidationIssueModel[];
 }
+
+export interface FsOptions {
+  checkFilesExist?: boolean;
+  baseDir?: string;
+}
+
+export interface RunOptions {
+  checkFilesExist?: boolean;
+  bodyFilesBaseDir?: string;
+  actionDirs?: string[];
+}
