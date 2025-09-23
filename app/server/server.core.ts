@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import chokidar from "chokidar";
-import { buildRouterFromFS } from "../builder/builder";
+import { buildRouterFromFS } from "../builder/builder.core";
 import { log, error } from "console";
 
 

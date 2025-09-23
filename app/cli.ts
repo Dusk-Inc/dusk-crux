@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { startServer } from "./server/server";
+import { startServer } from "./server/server.core";
 
 function parseArgs(argv: string[]) {
   const args = { cmd: "run", port: 4000, latticeDir: ".lattice" };

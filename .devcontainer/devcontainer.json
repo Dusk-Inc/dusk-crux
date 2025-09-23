@@ -18,7 +18,8 @@
                 "1Password.op-vscode",
                 "ms-vscode.vscode-typescript-next",
                 "ms-vscode.js-debug-nightly",
-                "Orta.vscode-jest"
+                "Orta.vscode-jest",
+                "openai.chatgpt"
             ] 
         } 
     }

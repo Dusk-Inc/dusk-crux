@@ -1,5 +1,5 @@
-import { PayloadModel, HeaderModel, ErrorModel, SuccessModel } from "../payload/payload"
-import { ValidateResponseData, ValidationSummaryModel, ValidationIssueModel } from "./validator"
+import { PayloadModel, HeaderModel, ErrorModel, SuccessModel } from "../payload/payload.core"
+import { ValidateResponseData, ValidationSummaryModel, ValidationIssueModel } from "./validator.core"
 
 describe("validateStructure", () => {
     test("does validate minimal structure", () => {
