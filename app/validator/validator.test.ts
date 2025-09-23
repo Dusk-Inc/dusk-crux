@@ -1,4 +1,4 @@
-import { PayloadModel, HeaderModel, SuccessModel } from "../payload/payload.core";
+import { PayloadModel, HeaderModel, SuccessModel } from "../payload/payload.models";
 import { ValidateResponseData, validateConfig } from "./validator.core";
 import { CruxConfig, ValidationSummaryModel } from "./validator.models";
 import * as utils from "../utils/utils";
