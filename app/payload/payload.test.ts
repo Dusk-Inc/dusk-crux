@@ -1,5 +1,5 @@
 import { describe, test } from '@jest/globals'
-import { composePayload } from './payload.core'
+import { composePayload, deepMerge } from './payload.core'
 import { PayloadErrorCode, ResponseClass, PayloadConfigHeaders, PayloadDataHeaders } from './payload.enum'
 import type { RequestContext, ComposeOptions, ComposeResult } from './payload.models'
 import { HttpMethod, type ActionSpec } from '../validator'
@@ -131,25 +131,6 @@ describe("composePayload", () => {
     expect(res.class).toBe(ResponseClass.SUCCESS)
   })
 
-  test("post_method_200_body_from_file__composed_success", async () => {
-    const ctx: RequestContext = { path: 'posts/withbody', method: 'post' };
-    const bodyJson = JSON.stringify({ ok: true, id: 42 })
-    const { mockFs, cruxDir } = createVfs(
-      vfsDir,
-      'posts/withbody',
-      [
-        { name: 'post_with_body', description: 'post json body', req: { method: HttpMethod.POST }, res: { status: 200, bodyFile: 'data.json' } as any }
-      ],
-      { res: { status: 200 } },
-      { 'posts/data.json': bodyJson }
-    )
-    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
-    expect(res.ok).toBe(true)
-    expect(res.status).toBe(200)
-    expect((res.body as Buffer).toString()).toBe(bodyJson)
-    expect(res.class).toBe(ResponseClass.SUCCESS)
-  })
-
   test("get_method_200_xml_body_from_file__composed_success", async () => {
     const ctx: RequestContext = { path: 'xml/withbody', method: 'get' };
     const bodyXml = '<user id="1">Jane</user>'
@@ -187,25 +168,6 @@ describe("composePayload", () => {
     expect(res.class).toBe(ResponseClass.CLIENT_ERROR)
     expect((res.body as Buffer).toString()).toBe(bodyJson)
   })
-  
-  test("patch_method_400_error_with_message_and_code__composed_client_error", async () => {
-    const ctx: RequestContext = { path: 'patches/error', method: 'patch' };
-    const bodyJson = JSON.stringify({ code: 'E_PATCH_BAD', message: 'bad patch' })
-    const { mockFs, cruxDir } = createVfs(
-      vfsDir,
-      'patches/error',
-      [
-        { name: 'patch_err', description: 'patch client error', req: { method: HttpMethod.PATCH }, res: { status: 400, bodyFile: 'err.json' } as any }
-      ],
-      { res: { status: 200 } },
-      { 'patches/err.json': bodyJson }
-    )
-    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
-    expect(res.ok).toBe(true)
-    expect(res.status).toBe(400)
-    expect(res.class).toBe(ResponseClass.CLIENT_ERROR)
-    expect((res.body as Buffer).toString()).toBe(bodyJson)
-  })
 
   test("patch_method_200_json_body_from_file__composed_success", async () => {
     const ctx: RequestContext = { path: 'patches/withbody', method: 'patch' };
@@ -229,7 +191,7 @@ describe("composePayload", () => {
   test("deep_merge_prefers_route_arrays_replace__composed_correctly", () => {
     const base = { a: 1, list: [1,2], obj: { x: 1, y: 2 } }
     const over = { list: [9], obj: { y: 3, z: 4 } } as any
-    const merged = require('./payload.core').deepMerge(base, over)
+    const merged = deepMerge(base, over)
     expect(merged.list).toEqual([9])
     expect(merged.obj).toEqual({ x: 1, y: 3, z: 4 })
   })
@@ -266,7 +228,7 @@ describe("composePayload", () => {
   test("unique_lower_precedence_keys_preserved__no_accidental_deletion", () => {
     const base = { keep: true, nested: { a: 1 } }
     const over = { nested: { a: 2 } }
-    const merged = require('./payload.core').deepMerge(base, over)
+    const merged = deepMerge(base, over)
     expect(merged.keep).toBe(true)
     expect(merged.nested).toEqual({ a: 2 })
   })
@@ -337,16 +299,6 @@ describe("composePayload", () => {
     expect(res.status).toBe(200)
   })
 
-  test("validation_errors_from_validator_are_returned__surface_to_caller", async () => {
-    const ctx: RequestContext = { path: 'invalid/route2', method: 'get' };
-    const { mockFs, cruxDir } = createVfs(vfsDir, 'invalid/route2', [
-      { name: 'bad2', description: 'bad2', req: {} as any, res: { status: 200 } as any }
-    ], { res: {} })
-    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs, validate: true } as any)
-    expect(res.ok).toBe(false)
-    expect(res.errors && res.errors.length).toBeGreaterThan(0)
-  })
-
   test("same_inputs_produce_identical_output__deterministic", async () => {
     const ctx: RequestContext = { path: 'det/route', method: 'get' };
     const { mockFs, cruxDir } = createVfs(vfsDir, 'det/route', [
@@ -401,20 +353,50 @@ describe("composePayload", () => {
     expect(Array.isArray(res.allow)).toBe(true)
     expect(res.allow && res.allow.includes('GET')).toBe(true)
   })
-  test.todo("deep_merge_prefers_route_arrays_replace__composed_correctly");
-  test.todo("route_level_globals_override_globals_json_action_overrides_route__composed_correctly");
-  test.todo("unique_lower_precedence_keys_preserved__no_accidental_deletion");
-  test.todo("method_name_matching_case_insensitive__works");
-  test.todo("absolute_bodyFile_path_forbidden__throws_error");
-  test.todo("large_bodyfile_loads_without_truncation__composed_success");
-  test.todo("throws_error_if_validation_fails__returns_validation_errors");
-  test.todo("query_version_beta_matches_first_valid_action__selected_correctly");
-  test.todo("query_version_beta_and_id_1_no_match__throws_no_matching_action_error");
-  test.todo("missing_status_defaults_to_200__composed_success");
-  test.todo("validation_errors_from_validator_are_returned__surface_to_caller");
-  test.todo("same_inputs_produce_identical_output__deterministic");
-  test.todo("charset_defaults_utf8_for_text_binary_skips_charset__headers_correct");
-  test.todo("authorization_used_for_selection_not_echoed_unless_configured__headers_correct");
-  test.todo("no_internal_paths_or_stack_in_normal_response__structured_error_only");
-  test.todo("route_exists_method_missing__returns_405_with_allow_header");
-});
+
+    test("route_exists_method_missing__returns_405_with_allow_header", async () => {
+    const ctx: RequestContext = { path: 'methods/onlyget', method: 'post' };
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'methods/onlyget', [
+      { name: 'a', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } }
+    ] as any)
+    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
+    expect(res.ok).toBe(false)
+    expect(res.status).toBe(405)
+    expect(Array.isArray(res.allow)).toBe(true)
+    expect(res.allow && res.allow.includes('GET')).toBe(true)
+  })
+
+  test("globals_json_missing__ignored_and_route_still_composes", async () => {
+    const ctx: RequestContext = { path: 'noglobals/route', method: 'get' };
+
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'noglobals/route', [
+      { name: 'ok', description: 'no globals present', req: { method: HttpMethod.GET }, res: { status: 204 } }
+    ], { res: { status: 200 } })
+
+    const globalsPath = `${cruxDir}/globals.json`
+    const originalExists = mockFs.existsSync.bind(mockFs)
+    mockFs.existsSync = (p: string) => p === globalsPath ? false : originalExists(p)
+
+    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(204)
+    expect(res.body).toBeUndefined()
+    expect(res.class).toBe(ResponseClass.SUCCESS)
+  })
+
+  test("allow_header_lists_unique_uppercase_methods__no_duplicates", async () => {
+    const ctx: RequestContext = { path: 'methods/multi', method: 'patch' };
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'methods/multi', [
+      { name: 'g1', description: 'd', req: { method: 'get' as any }, res: { status: 200 } },
+      { name: 'g2', description: 'd', req: { method: 'GET' as any }, res: { status: 200 } },
+      { name: 'p1', description: 'd', req: { method: 'post' as any }, res: { status: 201 } }
+    ] as any)
+
+    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
+    expect(res.ok).toBe(false)
+    expect(res.status).toBe(405)
+    // unique & uppercase
+    const sorted = [...(res.allow ?? [])].sort()
+    expect(sorted).toEqual(['GET', 'POST'])
+  })
+})

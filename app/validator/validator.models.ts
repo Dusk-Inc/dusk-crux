@@ -23,7 +23,7 @@ export interface RequestSpec {
   headers?: HeaderPolicy;
   params?: Record<string, string | number | boolean>;
   query?: Record<string, string | number | boolean>;
-  method?: HttpMethod;
+  method: HttpMethod;
   body?: {
     expected?: boolean;
     mediaTypes?: string[];
@@ -33,17 +33,17 @@ export interface RequestSpec {
 }
 
 export interface ResponseSpec {
-  status?: number;
+  status: number;
   headers?: Record<string, string>;
   bodyFile?: string | null;
   range?: boolean;
 }
 
 export interface ActionSpec {
-  name?: string;
-  description?: string;
-  req?: RequestSpec;
-  res?: ResponseSpec;
+  name: string;
+  description: string;
+  req: RequestSpec;
+  res: ResponseSpec;
 }
 
 export interface CruxConfig {

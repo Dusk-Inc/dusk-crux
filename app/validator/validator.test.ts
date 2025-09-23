@@ -1,7 +1,7 @@
 import { PayloadModel, HeaderModel, SuccessModel } from "../payload/payload.models";
 import { ValidateResponseData, validateConfig } from "./validator.core";
 import { CruxConfig, ValidationSummaryModel } from "./validator.models";
-import { ValidationCode } from "./validator.enum";
+import { ValidationCode, HttpMethod } from "./validator.enum";
 import * as utils from "../utils/utils";
 
 function baseConfig(): CruxConfig {
@@ -10,7 +10,7 @@ function baseConfig(): CruxConfig {
       {
         name: "get-user",
         description: "Returns a user",
-        req: { headers: {} },
+        req: { method: HttpMethod.GET, headers: {} },
         res: {
           status: 200,
           bodyFile: "user.json"
@@ -57,7 +57,7 @@ describe("validateConfig", () => {
 
   test("missing_name__ACTION_NAME_MISSING", () => {
     const cfg: CruxConfig = {
-      actions: [ { description: "d", req: {}, res: { status: 200, bodyFile: null } as any } ] as any
+      actions: [ { description: "d", req: { method: HttpMethod.GET } as any, res: { status: 200, bodyFile: null } as any } ] as any
     };
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.ACTION_NAME_MISSING);
@@ -65,7 +65,7 @@ describe("validateConfig", () => {
 
   test("missing_description__ACTION_DESC_MISSING", () => {
     const cfg: CruxConfig = {
-      actions: [ { name: "a", req: {}, res: { status: 200, bodyFile: null } as any } ] as any
+      actions: [ { name: "a", req: { method: HttpMethod.GET } as any, res: { status: 200, bodyFile: null } as any } ] as any
     };
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.ACTION_DESC_MISSING);
@@ -74,8 +74,8 @@ describe("validateConfig", () => {
   test("duplicate_action_names__ACTION_NAME_DUP", () => {
     const cfg: CruxConfig = {
       actions: [
-        { name: "dup", description: "one", req: {}, res: { status: 200, bodyFile: null } as any },
-        { name: "dup", description: "two", req: {}, res: { status: 200, bodyFile: null } as any }
+        { name: "dup", description: "one", req: { method: HttpMethod.GET } as any, res: { status: 200, bodyFile: null } as any },
+        { name: "dup", description: "two", req: { method: HttpMethod.GET } as any, res: { status: 200, bodyFile: null } as any }
       ]
     } as any;
     const issues = validateConfig(cfg);
@@ -85,8 +85,8 @@ describe("validateConfig", () => {
   test("duplicate_action_descriptions__ACTION_DESC_DUP", () => {
     const cfg: CruxConfig = {
       actions: [
-        { name: "a", description: "same", req: {}, res: { status: 200, bodyFile: null } as any },
-        { name: "b", description: "same", req: {}, res: { status: 200, bodyFile: null } as any }
+        { name: "a", description: "same", req: { method: HttpMethod.GET } as any, res: { status: 200, bodyFile: null } as any },
+        { name: "b", description: "same", req: { method: HttpMethod.GET } as any, res: { status: 200, bodyFile: null } as any }
       ]
     } as any;
     const issues = validateConfig(cfg);
@@ -104,7 +104,7 @@ describe("validateConfig", () => {
 
   test("missing_or_invalid_status__STATUS_MISSING_or_STATUS_INVALID", () => {
     const missing: CruxConfig = {
-      actions: [ { name: "a", description: "d", req: {}, res: {} as any } ]
+      actions: [ { name: "a", description: "d", req: { method: HttpMethod.GET } as any, res: {} as any } ]
     } as any;
     const missingIssues = validateConfig(missing);
     expectIssue(missingIssues, ValidationCode.STATUS_MISSING);
@@ -117,7 +117,7 @@ describe("validateConfig", () => {
   test("status_allows_body_but_bodyFile_missing__RES_BODYFILE_KEY_MISSING", () => {
     const cfg: CruxConfig = {
       actions: [
-        { name: "a", description: "d", req: {}, res: { status: 200 } as any }
+        { name: "a", description: "d", req: { method: HttpMethod.GET } as any, res: { status: 200 } as any }
       ]
     } as any;
     const issues = validateConfig(cfg);
@@ -134,7 +134,7 @@ describe("validateConfig", () => {
 
   test("bodyFile_wrong_type__RES_BODYFILE_TYPE", () => {
     const cfg: CruxConfig = {
-      actions: [ { name: "a", description: "d", req: {}, res: { status: 200, bodyFile: 123 } as any } ]
+      actions: [ { name: "a", description: "d", req: { method: HttpMethod.GET } as any, res: { status: 200, bodyFile: 123 } as any } ]
     } as any;
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.RES_BODYFILE_TYPE);
@@ -142,7 +142,7 @@ describe("validateConfig", () => {
 
   test("bodyFile_empty_string__RES_BODYFILE_EMPTY", () => {
     const cfg: CruxConfig = {
-      actions: [ { name: "a", description: "d", req: {}, res: { status: 200, bodyFile: "" } } ]
+      actions: [ { name: "a", description: "d", req: { method: HttpMethod.GET } as any, res: { status: 200, bodyFile: "" } } ]
     } as any;
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.RES_BODYFILE_EMPTY);
@@ -150,7 +150,7 @@ describe("validateConfig", () => {
 
   test("param_not_in_route_path__PARAM_NOT_IN_PATH", () => {
     const cfg = baseConfig();
-    cfg.actions[0].req = { params: { id: 1, stray: 2 } } as any;
+    cfg.actions[0].req = { method: HttpMethod.GET, params: { id: 1, stray: 2 } } as any;
     const issues = validateConfig(cfg, { actionDirs: ["/api/users/:id"] });
     expectIssue(issues, ValidationCode.PARAM_NOT_IN_PATH);
   });
@@ -168,7 +168,7 @@ describe("validateConfig", () => {
 
   test("invalid_header_policy__POLICY_INVALID", () => {
     const cfg = baseConfig();
-    cfg.actions[0].req = { headers: { policy: "invalid" as any } };
+    cfg.actions[0].req = { method: HttpMethod.GET, headers: { policy: "invalid" as any } } as any;
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.POLICY_INVALID);
   });
@@ -176,14 +176,18 @@ describe("validateConfig", () => {
   test("status_fallback_from_globals__no_STATUS_MISSING", () => {
     const cfg: CruxConfig = {
       globals: { res: { status: 201 } } as any,
-      actions: [ { name: "a", description: "d", req: {}, res: {} as any } ]
+      actions: [ { name: "a", description: "d", req: { method: HttpMethod.GET } as any, res: {} as any } ]
     } as any;
     const issues = validateConfig(cfg);
     expect(issues.some(i => i.code === ValidationCode.STATUS_MISSING)).toBe(false);
   });
 
   test("missing_req_method__METHOD_MISSING", () => {
-    const cfg = baseConfig();
+    const cfg: CruxConfig = {
+      actions: [
+        { name: "a", description: "d", req: {} as any, res: { status: 200, bodyFile: null } as any }
+      ]
+    } as any;
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.METHOD_MISSING);
   });

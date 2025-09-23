@@ -1,4 +1,4 @@
 .env
-.lattice
 /node_modules
 /dist
+/.crux
