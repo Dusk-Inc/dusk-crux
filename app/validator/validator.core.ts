@@ -1,12 +1,8 @@
-// validators/core.ts
-import { ValidationIssue, LatticeConfig, ActionSpec, Representation } from "./validator.interfaces";
+import { ValidationIssue, LatticeConfig, ValidationSummaryModel, ValidationIssueModel } from "./validator.interfaces";
 import { ValidationSeverity, PolicyMode } from "./validator.enum";
-import { isEmptyString, statusForbidsBody, isValidMediaType, toLowerKeys, isValidHttpStatus } from "../utils/utils";
+import { isEmptyString, statusForbidsBody, isValidMediaType, toLowerKeys, isValidHttpStatus, extractPathParamsFromDir } from "../utils/utils";
 import { fileExistsSync } from "../utils/utils";
 import * as fs from "fs";
-
-// This is a good candidate of a thing that could be turned into a class.
-
 
 export function validateNonEmptyActions(cfg: LatticeConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -92,7 +88,6 @@ export function validateRepresentationsBasic(cfg: LatticeConfig): ValidationIssu
       return;
     }
 
-    // exactly one default; fields presence
     let defaultCount = 0;
     const names = new Set<string>();
 
@@ -107,7 +102,6 @@ export function validateRepresentationsBasic(cfg: LatticeConfig): ValidationIssu
 
       if (r.default) defaultCount += 1;
 
-      // If body is allowed, bodyFile and contentType can be null per your rules, but must be present keys
       if (!("bodyFile" in r)) {
         issues.push({ severity: ValidationSeverity.ERROR, code: "REP_BODYFILE_KEY_MISSING", message: "representation.bodyFile key must exist (can be null).", path: `actions[${i}].res.representations[${j}]` });
       } else if (r.bodyFile !== null && typeof r.bodyFile !== "string") {
@@ -175,12 +169,9 @@ export function validateMatches(cfg: LatticeConfig): ValidationIssue[] {
     for (let m = 0; m < a.match.length; m++) {
       const mm = a.match[m];
 
-      // useResponse must exist
       if (mm.useResponse && !repNames.has(mm.useResponse)) {
         issues.push({ severity: ValidationSeverity.ERROR, code: "MATCH_UNKNOWN_RESPONSE", message: `match.useResponse '${mm.useResponse}' does not match any representation name.`, path: `actions[${i}].match[${m}].useResponse` });
       }
-
-      // headers in when must not be forbidden; optionally, ensure in required/optional sets
       if (mm.when?.headers) {
         const keys = Object.keys(mm.when.headers);
         for (const k of keys) {
@@ -188,7 +179,6 @@ export function validateMatches(cfg: LatticeConfig): ValidationIssue[] {
           if (forbidden.has(kl)) {
             issues.push({ severity: ValidationSeverity.ERROR, code: "MATCH_FORBIDDEN_HEADER", message: `match.when.headers uses forbidden header '${k}'.`, path: `actions[${i}].match[${m}].when.headers['${k}']` });
           }
-          // If you want strict: enforce presence in required/optional when those sets are non-empty
           if ((required.size > 0 || optional.size > 0) && !required.has(kl) && !optional.has(kl)) {
             issues.push({ severity: ValidationSeverity.WARNING, code: "MATCH_HEADER_NOT_DECLARED", message: `Header '${k}' used in match is not declared in required/optional.`, path: `actions[${i}].match[${m}].when.headers['${k}']` });
           }
@@ -242,7 +232,7 @@ export function validateParamsSubsetOfPath(cfg: LatticeConfig, actionDirs: strin
 export interface RunOptions {
   checkFilesExist?: boolean;
   bodyFilesBaseDir?: string;
-  actionDirs?: string[]; // absolute directories for each action index
+  actionDirs?: string[];
 }
 
 export function validateConfig(cfg: LatticeConfig, opts: RunOptions = {}): ValidationIssue[] {
@@ -259,4 +249,51 @@ export function validateConfig(cfg: LatticeConfig, opts: RunOptions = {}): Valid
   issues.push(...validateMatches(cfg));
   issues.push(...validateBodyFilesExist(cfg, { checkFilesExist: !!opts.checkFilesExist, baseDir: opts.bodyFilesBaseDir }));
   return issues;
+}
+
+export function ValidateResponseData(payloadJson: string): ValidationSummaryModel {
+  const issues: ValidationIssueModel[] = [];
+
+  let payload: any;
+  try {
+    payload = JSON.parse(payloadJson);
+  } catch (e: any) {
+    issues.push({ code: "PARSE_ERROR", message: `Invalid JSON: ${e?.message || "unknown"}` });
+    return { ok: false, issues };
+  }
+
+  if (!Array.isArray(payload?.headers)) {
+    issues.push({ code: "HEADERS_INVALID", message: "headers must be an array", path: "headers" });
+  } else {
+    payload.headers.forEach((h: any, idx: number) => {
+      if (!h || typeof h !== "object") {
+        issues.push({ code: "HEADER_NOT_OBJECT", message: "header entry must be an object", path: `headers[${idx}]` });
+        return;
+      }
+      if (typeof h.headerName !== "string" || h.headerName.trim() === "") {
+        issues.push({ code: "HEADER_NAME_INVALID", message: "headerName must be a non-empty string", path: `headers[${idx}].headerName` });
+      }
+      if (typeof h.headerValue !== "string") {
+        issues.push({ code: "HEADER_VALUE_INVALID", message: "headerValue must be a string", path: `headers[${idx}].headerValue` });
+      }
+    });
+  }
+
+  if (!Array.isArray(payload?.responses) || payload.responses.length === 0) {
+    issues.push({ code: "RESPONSES_EMPTY", message: "responses must be a non-empty array", path: "responses" });
+  } else {
+    payload.responses.forEach((r: any, idx: number) => {
+      if (!r || typeof r !== "object") {
+        issues.push({ code: "RESPONSE_NOT_OBJECT", message: "response entry must be an object", path: `responses[${idx}]` });
+        return;
+      }
+      if (typeof r.status !== "number") {
+        issues.push({ code: "STATUS_MISSING", message: "response.status must be a number", path: `responses[${idx}].status` });
+      } else if (!isValidHttpStatus(r.status)) {
+        issues.push({ code: "STATUS_INVALID", message: `Invalid HTTP status '${r.status}'`, path: `responses[${idx}].status` });
+      }
+    });
+  }
+
+  return { ok: issues.length === 0, issues };
 }

@@ -31,9 +31,9 @@ export interface RequestSpec {
 }
 
 export interface Representation {
-  name?: string;                  // required by validation
-  contentType?: string | null;    // allowed null/None per your spec
-  bodyFile?: string | null;       // allowed null/None per your spec
+  name?: string;
+  contentType?: string | null;
+  bodyFile?: string | null;
   default?: boolean;
 }
 
@@ -76,5 +76,16 @@ export interface ValidationIssue {
   severity: ValidationSeverity;
   code: string;
   message: string;
-  path: string; // JSON path-ish string for pinpointing (e.g., actions[2].res.representations[0])
+  path: string;
+}
+
+export interface ValidationIssueModel {
+  code: string;
+  message: string;
+  path?: string;
+}
+
+export interface ValidationSummaryModel {
+  ok: boolean;
+  issues: ValidationIssueModel[];
 }
