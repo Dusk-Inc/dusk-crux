@@ -3,37 +3,9 @@ import { composePayload, deepMerge } from './payload.core'
 import { PayloadErrorCode, ResponseClass, PayloadConfigHeaders, PayloadDataHeaders } from './payload.enum'
 import type { RequestContext, ComposeOptions, ComposeResult } from './payload.models'
 import { HttpMethod, type ActionSpec } from '../validator'
+import { createVfs, vfsDir } from '../test/helpers'
 
-const vfsDir: string = '/vfs/.crux';
 
-function createVfs(
-  cruxDir: string,
-  routePath: string,
-  actions: ActionSpec[],
-  globals: any = { res: { status: 200 } },
-  extraFiles: Record<string, string> = {}
-) {
-  if (!Array.isArray(actions)) throw new Error('actions must be an array of ActionSpec')
-  const files: Record<string, string> = {
-    [`${cruxDir}/globals.json`]: JSON.stringify(globals),
-    [`${cruxDir}/${routePath}.crux.json`]: JSON.stringify({ actions })
-  }
-  for (const [rel, content] of Object.entries(extraFiles)) {
-    const trimmed = rel.replace(/^\/+/, '')
-    files[`${cruxDir}/${trimmed}`] = content
-  }
-  const mockFs: any = {
-    existsSync: (p: string) => p in files,
-    promises: {
-      readFile: async (p: string, enc: string) => {
-        if (!(p in files)) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
-        return files[p]
-      }
-    }
-  }
-  ;(mockFs as any)._files = files
-  return { mockFs, cruxDir }
-}
 
 describe("composePayload", () => {
   test("combines_globals_and_route_configs__composed_correctly", async () => {
@@ -395,7 +367,6 @@ describe("composePayload", () => {
     const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
     expect(res.ok).toBe(false)
     expect(res.status).toBe(405)
-    // unique & uppercase
     const sorted = [...(res.allow ?? [])].sort()
     expect(sorted).toEqual(['GET', 'POST'])
   })
