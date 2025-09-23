@@ -1,0 +1,85 @@
+{
+    "globals": {
+        "req": {
+            "headers": {
+                "policy": "warn",
+                "required": [],
+                "forbidden": [],
+                "schema": {
+                    "authorization": {
+                        "scheme": "Bearer",
+                        "pattern": "^[A-Za-z0-9._-]{20,}$"
+                    },
+                    "content-type": {
+                        "oneof": [
+                            "application/json"
+                        ]
+                    }
+                }
+            }
+        },
+        "res": {
+            "status": 200
+        }
+    },
+    "actions": [
+        {
+            "name": "test_1",
+            "description": "example of using JSON as body data.",
+            "req": {
+                "method": "post",
+                "params": {
+                    "id": 1
+                },
+                "query": {
+                    "date_created": "01010001"
+                }
+            },
+            "res": {
+                "bodyFile": "test_1.json"
+            }
+        },
+        {
+            "name": "test_2",
+            "description": "example of using xml as body data",
+            "req": {
+                "headers": {
+                    "schema": {
+                        "content-type": "application/xml"
+                    }
+                },
+                "params": {
+                    "id": 1
+                },
+                "query": {
+                    "date_created": "01010001"
+                }
+            },
+            "res": {
+                "bodyFile": "test_2.xml"
+            }
+        },
+        {
+            "name": "test_3",
+            "description": "example of error response",
+            "req": {
+                "headers": {
+                    "policy": "strict",
+                    "schema": {
+                        "content-type": "application/xml"
+                    }
+                },
+                "params": {
+                    "id": 1
+                },
+                "query": {
+                    "date_created": "01010001"
+                }
+            },
+            "res": {
+                "status": 404,
+                "bodyFile": "test_3.json"
+            }
+        }
+    ]
+}

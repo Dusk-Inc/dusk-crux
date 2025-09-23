@@ -1,10 +1,10 @@
-import { PolicyMode, ValidationSeverity, HttpNoBodyStatus } from "./validator.enum";
+import { PolicyMode, ValidationSeverity, HttpNoBodyStatus, AuthScheme, BodyMode, DiagnosticsOnWarn, HttpMethod } from "./validator.enum";
 
 export interface HeaderSchemas {
   [headerNameLower: string]: {
     oneOf?: string[];
     pattern?: string;
-    scheme?: "Bearer" | string;
+    scheme?: AuthScheme | string;
   };
 }
 
@@ -14,6 +14,7 @@ export interface HeaderPolicy {
   optional?: string[];
   forbidden?: string[];
   schemas?: HeaderSchemas;
+  schema?: HeaderSchemas | Record<string, unknown>;
   strip?: string[];
   trustProxy?: boolean;
 }
@@ -22,25 +23,19 @@ export interface RequestSpec {
   headers?: HeaderPolicy;
   params?: Record<string, string | number | boolean>;
   query?: Record<string, string | number | boolean>;
+  method?: HttpMethod;
   body?: {
     expected?: boolean;
     mediaTypes?: string[];
-    mode?: "warn" | "strict";
+    mode?: BodyMode;
     constraints?: { requireBoundary?: boolean };
   };
-}
-
-export interface Representation {
-  name?: string;
-  contentType?: string | null;
-  bodyFile?: string | null;
-  default?: boolean;
 }
 
 export interface ResponseSpec {
   status?: number;
   headers?: Record<string, string>;
-  representations?: Representation[];
+  bodyFile?: string | null;
   range?: boolean;
 }
 
@@ -49,23 +44,15 @@ export interface ActionSpec {
   description?: string;
   req?: RequestSpec;
   res?: ResponseSpec;
-  match?: Array<{
-    when?: {
-      headers?: Record<string, string>;
-      params?: Record<string, string | number | boolean>;
-      query?: Record<string, string | number | boolean>;
-    };
-    useResponse?: string; // must match a representation.name
-  }>;
 }
 
-export interface LatticeConfig {
+export interface CruxConfig {
   version?: string;
   globals?: {
     req?: RequestSpec;
     res?: ResponseSpec;
     diagnostics?: {
-      onWarn?: "collect" | "log" | "throw";
+      onWarn?: DiagnosticsOnWarn;
       explain?: boolean;
     };
   };

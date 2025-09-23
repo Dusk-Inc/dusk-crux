@@ -1,3 +1,3 @@
 export * from "./validator.core";
-export * from "./validator.interfaces";
+export * from "./validator.models";
 export * from "./validator.enum";
