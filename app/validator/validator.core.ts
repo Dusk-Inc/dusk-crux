@@ -1,6 +1,6 @@
 import { ValidationIssue, CruxConfig, ValidationSummaryModel, ValidationIssueModel } from "./validator.models";
 import { ValidationSeverity, PolicyMode, ValidationCode } from "./validator.enum";
-import { isEmptyString, statusForbidsBody, isValidMediaType, toLowerKeys, isValidHttpStatus, extractPathParamsFromDir } from "../utils/utils";
+import { statusForbidsBody, toLowerKeys, isValidHttpStatus, extractPathParamsFromDir } from "../utils/utils";
 import { fileExistsSync } from "../utils/utils";
 import * as fs from "fs";
 

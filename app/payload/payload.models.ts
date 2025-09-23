@@ -12,7 +12,7 @@ export interface ErrorModel {
 }
 
 export interface ResponseModel {
-    variant: string,
+    action: string,
     status: number
 }
 
