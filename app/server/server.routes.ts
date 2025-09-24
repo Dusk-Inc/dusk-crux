@@ -1,56 +1,16 @@
 import type { Application } from 'express'
-import fg from 'fast-glob'
-import path from 'path'
-import fs from 'fs/promises'
 import { validateConfig } from '../validator'
-import { composeCruxConfig } from '../payload'
+import { loadCruxRoutes, LoadCruxRoutesOptions } from '../payload'
 
-function toRouteSegment(seg: string) {
-  if (seg.startsWith('[') && seg.endsWith(']')) return `:${seg.slice(1, -1)}`
-  return seg
-}
-
-function relativize(file: string, root: string) {
-  const normalizeSeps = (p: string) => p.replace(/[\\/]+/g, path.sep)
-  const rel = path.relative(normalizeSeps(root), normalizeSeps(file))
-  return rel.split(path.sep)
-}
-
-export type ServerRoutesOptions = {
-  listFiles?: (root: string) => Promise<string[]>
-  fileSystem?: { promises: { readFile: (p: string, enc?: string) => Promise<string> } }
-}
+export type ServerRoutesOptions = Pick<LoadCruxRoutesOptions, 'listFiles' | 'fileSystem'>
 
 export async function registerServerRoutes(app: Application, cruxRoot: string, opts: ServerRoutesOptions = {}) {
-  const pattern = ['**/*.crux.json']
-  async function loadGlobals(): Promise<any | null> {
-    try {
-      const readFile = opts.fileSystem?.promises?.readFile ?? fs.readFile
-      const raw = await readFile(path.join(cruxRoot, 'globals.json'), 'utf8')
-      return JSON.parse(raw)
-    } catch { return null }
-  }
-  const globals = await loadGlobals()
-  const files = opts.listFiles
-    ? await opts.listFiles(cruxRoot)
-    : await fg(pattern, { cwd: cruxRoot, dot: true, onlyFiles: true, absolute: true })
+  const descriptors = await loadCruxRoutes(cruxRoot, {
+    listFiles: opts.listFiles,
+    fileSystem: opts.fileSystem
+  })
 
-  const parsed: Array<{ cfg: any; routePath: string; file: string }>= []
-  for (const file of files) {
-    let cfg: any
-    try {
-      const readFile = opts.fileSystem?.promises?.readFile ?? fs.readFile
-      const raw = await readFile(file, 'utf8')
-      cfg = JSON.parse(raw)
-    } catch {
-      continue
-    }
-    const parts = relativize(file, cruxRoot)
-    const dirs = parts.slice(0, -1).map(toRouteSegment)
-    const routePath = '/' + dirs.join('/')
-    const comp = composeCruxConfig(globals, cfg)
-    parsed.push({ cfg: comp, routePath, file })
-  }
+  const parsed = descriptors.map(d => ({ cfg: d.config, routePath: d.routePath, file: d.file }))
 
   app.get('/', (_req, res) => {
     const routes = parsed.map(({ cfg, routePath }) => {

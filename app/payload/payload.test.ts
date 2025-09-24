@@ -367,4 +367,58 @@ describe("composePayload", () => {
     const sorted = [...(res.allow ?? [])].sort()
     expect(sorted).toEqual(['GET', 'POST'])
   })
+
+  test("method_inherited_from_globals__request_matches", async () => {
+    const ctx: RequestContext = { path: 'inherit/method', method: 'get' };
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'inherit/method',
+      [
+        { name: 'inherited', description: 'uses global method', req: {} as any, res: { status: 204 } as any }
+      ] as any,
+      { req: { method: HttpMethod.GET } }
+    )
+
+    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(204)
+  })
+
+  test("dynamic_route_with_route_file__returns_expected_body", async () => {
+    const body = JSON.stringify([
+      { name: 'Count Ollaf', type: 'Character', famous_quote: "WRONG! It's a list." }
+    ])
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'users/[id]/payload',
+      [
+        {
+          name: 'user_id_test',
+          description: 'example dynamic route',
+          req: { method: HttpMethod.GET, params: { id: '1' } as any, query: { date_created: '00010101' } as any } as any,
+          res: { status: 200, bodyFile: 'test_4.json' } as any
+        }
+      ] as any,
+      { res: { status: 200 } },
+      { 'users/[id]/test_4.json': body }
+    )
+
+    const ctx: RequestContext = {
+      path: 'users/1',
+      method: 'get',
+      params: { id: '1' },
+      query: { date_created: '00010101' }
+    }
+
+    const res = await composePayload(ctx, {
+      cruxDir,
+      fileSystem: mockFs,
+      routeFile: `${cruxDir}/users/[id]/payload.crux.json`
+    } as any)
+
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(200)
+    expect((res.body as Buffer).toString()).toBe(body)
+    expect(res.headers['content-type']).toBe('application/json; charset=utf-8')
+  })
 })

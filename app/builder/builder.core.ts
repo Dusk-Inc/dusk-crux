@@ -1,97 +1,117 @@
-import express, { Router } from "express";
-import fg from "fast-glob";
+import express, { Router, Request, Response, NextFunction } from "express";
 import path from "path";
-import fs from "fs/promises";
-import { log, error } from '../utils/utils.core'
-import { makeJsonHandler } from '../utils/utils.core'
+import { log } from '../utils/utils.core'
 import { validateConfig, ValidationIssue } from "../validator";
 import { ValidationSeverity } from '../validator/validator.enum';
 import { ConsoleColors } from "../utils/utils.enum";
-import { composeCruxConfig } from "../payload";
+import { composePayload, loadCruxRoutes, LoadCruxRoutesOptions } from "../payload";
+import type { CruxRouteDescriptor } from "../payload/payload.core";
+import type { RequestContext, ComposeResult } from "../payload/payload.models";
 
-function toRouteSegment(seg: string) {
-  if (seg.startsWith("[") && seg.endsWith("]")) {
-    const name = seg.slice(1, -1);
-    return `:${name}`;
-  }
-  return seg;
-}
-
-function relativize(file: string, root: string) {
-  const normalizeSeps = (p: string) => p.replace(/[\\/]+/g, path.sep);
-  const rel = path.relative(normalizeSeps(root), normalizeSeps(file));
-  return rel.split(path.sep);
-}
-
-export type BuildOptions = {
-  fileSystem?: { promises: { readFile: (p: string, enc?: string) => Promise<string> } };
-  listFiles?: (root: string) => Promise<string[]>;
-}
-
-function normalizeConfig(cfg: any): any {
-  const out = { ...(cfg || {}) };
-  if (Array.isArray(out.actions)) {
-    out.actions = out.actions.map((a: any) => ({
-      ...a,
-      req: {
-        ...(a?.req || {}),
-        method: typeof a?.req?.method === 'string' ? a.req.method.toLowerCase() : a?.req?.method
-      }
-    }));
-  }
-  return out;
-}
+export type BuildOptions = Pick<LoadCruxRoutesOptions, 'fileSystem' | 'listFiles'>
 
 export async function buildRouterFromFS(root: string, opts: BuildOptions = {}): Promise<Router> {
   const router = express.Router();
 
-  const pattern = ["**/*.crux.json"];
-  const files = opts.listFiles
-    ? await opts.listFiles(root)
-    : await fg(pattern, { cwd: root, dot: true, onlyFiles: true, absolute: true });
+  const descriptors = await loadCruxRoutes(root, {
+    fileSystem: opts.fileSystem,
+    listFiles: opts.listFiles
+  })
 
-  // load globals.json once
-  let globals: any = null;
-  try {
-    const readFile = opts.fileSystem?.promises?.readFile ?? fs.readFile;
-    const raw = await readFile(path.join(root, 'globals.json'), 'utf8');
-    globals = JSON.parse(raw);
-  } catch {}
-
-  for (const file of files) {
-    const parts = relativize(file, root);
-
-    const dirs = parts.slice(0, -1).map(toRouteSegment);
-    const routePath = "/" + dirs.join("/");
-
-    let cfg: any;
-    try {
-      const readFile = opts.fileSystem?.promises?.readFile ?? fs.readFile;
-      const raw = await readFile(file, "utf8");
-      cfg = JSON.parse(raw);
-    } catch (e) {
-      error?.(`invalid JSON: ${file}`, e);
-      continue;
+  for (const descriptor of descriptors) {
+    const actions: any[] = Array.isArray(descriptor.config?.actions) ? descriptor.config.actions : []
+    const issues: ValidationIssue[] = validateConfig(descriptor.config, {
+      actionDirs: Array(actions.length).fill(descriptor.routePath)
+    })
+    if (issues.length > 0) {
+      logIssues(issues, descriptor.routePath, path.relative(root, descriptor.file))
+      continue
     }
 
-    const composed = composeCruxConfig(globals, cfg);
-    const actions: any[] = Array.isArray(composed?.actions) ? composed.actions : [];
-    const issues: ValidationIssue[] = validateConfig(composed, { actionDirs: Array(actions.length).fill(routePath) });
-    if (issues.length === 0) {
-      const handler = makeJsonHandler(composed);
-      for (const a of actions) {
-        const m = String(a?.req?.method || "").toLowerCase();
-        if (!m || typeof (router as any)[m] !== "function") continue;
-        (router as any)[m](routePath, handler);
-        log?.(`${m.toUpperCase()} ${routePath}  ←  ${path.relative(root, file)}#${a?.name ?? "action"}`);
-      }
-    } else {
-      logIssues(issues, routePath, path.relative(root, file))
-
-    }
+    registerRoute(router, descriptor, root, opts)
   }
 
   return router;
+}
+
+function registerRoute(router: Router, descriptor: CruxRouteDescriptor, root: string, opts: BuildOptions) {
+  const actions: any[] = Array.isArray(descriptor.config?.actions) ? descriptor.config.actions : []
+  const methods = new Map<string, Function>()
+
+  for (const action of actions) {
+    const method = String(action?.req?.method || '').toLowerCase()
+    if (!method || typeof (router as any)[method] !== 'function') continue
+    if (!methods.has(method)) {
+      const handler = createActionHandler(descriptor, root, opts)
+      methods.set(method, handler)
+      ;(router as any)[method](descriptor.routePath, handler)
+    }
+    log?.(`${method.toUpperCase()} ${descriptor.routePath}  ←  ${path.relative(root, descriptor.file)}#${action?.name ?? 'action'}`)
+  }
+}
+
+function createActionHandler(descriptor: CruxRouteDescriptor, root: string, opts: BuildOptions) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const ctx = buildRequestContext(req)
+      const result = await composePayload(ctx, {
+        cruxDir: root,
+        fileSystem: opts.fileSystem as any,
+        routeFile: descriptor.file
+      })
+      applyComposeResult(res, result)
+    } catch (err) {
+      next(err)
+    }
+  }
+}
+
+function buildRequestContext(req: Request): RequestContext {
+  return {
+    path: req.path.replace(/^\/+/, ''),
+    method: req.method,
+    headers: extractHeaders(req.headers as Record<string, unknown>),
+    query: extractValues(req.query as Record<string, unknown>),
+    params: extractValues(req.params as Record<string, unknown>)
+  }
+}
+
+function applyComposeResult(res: Response, result: ComposeResult) {
+  if (result.allow && result.allow.length > 0) {
+    res.set('Allow', result.allow.join(', '))
+  }
+  for (const [key, value] of Object.entries(result.headers || {})) {
+    res.set(key, value)
+  }
+  res.status(result.status)
+  if (result.body !== undefined && result.body !== null) {
+    res.send(result.body)
+    return
+  }
+  if (result.errors && result.errors.length > 0) {
+    res.json({ errors: result.errors })
+    return
+  }
+  res.end()
+}
+
+function extractHeaders(headers: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers || {})) {
+    if (Array.isArray(value)) out[key] = value.map(v => String(v)).join(', ')
+    else if (value !== undefined && value !== null && typeof value !== 'object') out[key] = String(value)
+  }
+  return out
+}
+
+function extractValues(values: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(values || {})) {
+    if (Array.isArray(value)) out[key] = value.map(v => String(v)).join(', ')
+    else if (value !== undefined && value !== null && typeof value !== 'object') out[key] = String(value)
+    else if (typeof value === 'object' && value !== null) out[key] = JSON.stringify(value)
+  }
+  return out
 }
 
 function logIssues(issues: ValidationIssue[], routePath: string, relativePath: string){

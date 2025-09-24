@@ -1,21 +1,63 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import fg from 'fast-glob'
 import { PayloadErrorCode, ResponseClass } from './payload.enum'
 import { RequestContext, ComposeOptions, ComposeResult } from './payload.models'
 import { ValidationSummaryModel, ValidationIssue } from '../validator'
 import { validateConfig } from '../validator'
 
+type FileSystemService = {
+  existsSync?: (p: string) => boolean
+  promises?: {
+    readFile?: (p: string, enc?: any) => Promise<string | Buffer>
+  }
+}
+
+type ReadFile = (p: string, enc?: BufferEncoding) => Promise<string>
+
+function resolveReadFile(fsys?: FileSystemService | typeof fs): { readFile: ReadFile; existsSync?: (p: string) => boolean } {
+  const fallback = fs as unknown as FileSystemService & typeof fs
+  const active = (fsys ?? fallback) as FileSystemService & typeof fs
+  const existsSync = selectExistsSync(active, fallback)
+  return {
+    async readFile(p: string, enc: BufferEncoding = 'utf8') {
+      const selected = selectReadFileCandidate(active, fallback)
+      return normalizeRead(selected, p, enc)
+    },
+    existsSync
+  }
+}
+
+type CandidateRead = (p: string, enc?: any) => Promise<string | Buffer>
+
+function selectReadFileCandidate(active: FileSystemService & typeof fs, fallback: FileSystemService & typeof fs): CandidateRead {
+  if (active.promises?.readFile) return active.promises.readFile.bind(active.promises) as CandidateRead
+  if (fallback.promises?.readFile) return fallback.promises.readFile.bind(fallback.promises) as CandidateRead
+  throw new Error('readFile is not implemented on the provided file system')
+}
+
+function selectExistsSync(active: FileSystemService & typeof fs, fallback: FileSystemService & typeof fs) {
+  if (typeof active.existsSync === 'function') return active.existsSync.bind(active)
+  if (typeof fallback.existsSync === 'function') return fallback.existsSync.bind(fallback)
+  return undefined
+}
+
+async function normalizeRead(candidate: CandidateRead, p: string, enc: BufferEncoding): Promise<string> {
+  const data = await candidate(p, enc)
+  return typeof data === 'string' ? data : data.toString()
+}
+
 export async function composePayload(ctx: RequestContext, opts: ComposeOptions = {}): Promise<ComposeResult> {
   const fsys = opts.fileSystem ?? fs
   const cruxDir = opts.cruxDir ?? path.resolve(process.cwd(), '.crux')
 
-  const routeConfigPath = resolveRouteConfigPath(cruxDir, ctx.path)
+  const routeConfigPath = opts.routeFile ?? resolveRouteConfigPath(cruxDir, ctx.path)
   const globals = await loadGlobals(fsys, cruxDir)
   const routeCfg = await loadRouteConfig(fsys, routeConfigPath)
+  const composedCfg = composeCruxConfig(globals, routeCfg)
 
-  const effectiveCfg = { ...routeCfg, globals: deepMerge(globals || {}, routeCfg?.globals || {}) }
   if (opts.validate) {
-    const validationIssues = validateConfig(effectiveCfg as any)
+    const validationIssues = validateConfig(composedCfg as any)
     if (validationIssues.length > 0) {
       return {
         ok: false,
@@ -28,7 +70,7 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
   }
 
   const method = String(ctx.method || '').toLowerCase()
-  const actions: any[] = Array.isArray(routeCfg?.actions) ? routeCfg.actions : []
+  const actions: any[] = Array.isArray(composedCfg?.actions) ? composedCfg.actions : []
   const methodMatches = actions.filter(a => (a?.req?.method || '').toLowerCase() === method)
   if (methodMatches.length === 0) {
     return {
@@ -62,10 +104,9 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
     }
   }
 
-  const globalRes = globals?.res ?? {}
-  const routeRes = routeCfg?.globals?.res ?? {}
+  const globalRes = composedCfg?.globals?.res ?? {}
   const actionRes = action?.res ?? {}
-  const status = (actionRes.status ?? routeRes.status ?? globalRes.status ?? 200) as number
+  const status = (actionRes.status ?? globalRes.status ?? 200) as number
 
   let body: Buffer | undefined
   const routeDir = path.dirname(routeConfigPath)
@@ -138,19 +179,62 @@ export function normalizeHeaders(h?: Record<string, string>): Record<string, str
 
 export function resolveRouteConfigPath(cruxDir: string, routePath: string): string {
   const trimmed = routePath.replace(/^\/+/, '')
-  return path.join(cruxDir, `${trimmed}.crux.json`)
+  const parts = trimmed.split('/').filter(Boolean)
+  const normalized = parts.map(seg => {
+    if (seg.startsWith(':')) return `[${seg.slice(1)}]`
+    return seg
+  })
+  const target = normalized.join('/')
+  return path.join(cruxDir, `${target}.crux.json`)
 }
 
-export async function loadGlobals(fsys: typeof fs, cruxDir: string): Promise<any | null> {
-  const p = path.join(cruxDir, 'globals.json')
-  if (!fsys.existsSync(p)) return null
-  const raw = await (fsys as any).promises.readFile(p, 'utf8')
+export async function loadGlobals(fsys: FileSystemService | typeof fs | undefined, cruxDir: string): Promise<any | null> {
+  const { readFile, existsSync } = resolveReadFile(fsys)
+  const globalsPath = path.join(cruxDir, 'globals.json')
+  if (existsSync && !existsSync(globalsPath)) return null
+  try {
+    const raw = await readFile(globalsPath, 'utf8')
+    return JSON.parse(raw)
+  } catch (error: any) {
+    if (error && typeof error === 'object' && (error as any).code === 'ENOENT') return null
+    throw error
+  }
+}
+
+export async function loadRouteConfig(fsys: FileSystemService | typeof fs | undefined, routeConfigPath: string): Promise<any> {
+  const { readFile } = resolveReadFile(fsys)
+  const raw = await readFile(routeConfigPath, 'utf8')
   return JSON.parse(raw)
 }
 
-export async function loadRouteConfig(fsys: typeof fs, routeConfigPath: string): Promise<any> {
-  const raw = await (fsys as any).promises.readFile(routeConfigPath, 'utf8')
-  return JSON.parse(raw)
+export type LoadCruxRoutesOptions = {
+  fileSystem?: FileSystemService | typeof fs
+  listFiles?: (root: string) => Promise<string[]>
+}
+
+export type CruxRouteDescriptor = {
+  file: string
+  routePath: string
+  config: any
+}
+
+export async function loadCruxRoutes(cruxDir: string, opts: LoadCruxRoutesOptions = {}): Promise<CruxRouteDescriptor[]> {
+  const files = opts.listFiles
+    ? await opts.listFiles(cruxDir)
+    : await fg('**/*.crux.json', { cwd: cruxDir, dot: true, onlyFiles: true, absolute: true })
+  const globals = await loadGlobals(opts.fileSystem, cruxDir)
+  const out: CruxRouteDescriptor[] = []
+  for (const file of files) {
+    try {
+      const cfg = await loadRouteConfig(opts.fileSystem, file)
+      const routePath = buildRoutePath(file, cruxDir)
+      const composed = composeCruxConfig(globals, cfg)
+      out.push({ file, routePath, config: composed })
+    } catch {
+      continue
+    }
+  }
+  return out
 }
 
 export function classifyStatus(status: number): ResponseClass {
@@ -187,4 +271,21 @@ function contentTypeFor(file: string): string {
     return 'text/plain; charset=utf-8'
   }
   return 'application/octet-stream'
+}
+
+function buildRoutePath(file: string, cruxDir: string): string {
+  const parts = relativize(file, cruxDir)
+  const dirs = parts.slice(0, -1).map(toRouteSegment)
+  return '/' + dirs.join('/')
+}
+
+function relativize(file: string, root: string) {
+  const normalize = (p: string) => p.replace(/[\\/]+/g, path.sep)
+  const rel = path.relative(normalize(root), normalize(file))
+  return rel.split(path.sep)
+}
+
+function toRouteSegment(seg: string) {
+  if (seg.startsWith('[') && seg.endsWith(']')) return `:${seg.slice(1, -1)}`
+  return seg
 }

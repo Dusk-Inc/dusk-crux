@@ -46,6 +46,7 @@ export interface ComposeOptions {
   baseDir?: string
   fileSystem?: typeof fs
   validate?: boolean
+  routeFile?: string
 }
 
 export interface PayloadError {
