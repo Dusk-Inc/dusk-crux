@@ -87,32 +87,6 @@ describe("builder", () => {
     expect(methods.has('get')).toBe(true);
   })
   
-  test("dir_route_outputs_api_structure__available_by_default", async () => {
-    const { mockFs, cruxDir } = createVfs(vfsDir, 'user/[id]/user', [
-      { name: 'getUser', description: 'get user', req: { method: 'GET', query: { version: 'beta', page: 1 } as any, params: { id: 1 } as any, headers: { required: ['authorization'] } as any } as any, res: { status: 200, bodyFile: null } as any }
-    ] as any);
-
-    const router = await buildRouterFromFS(cruxDir, { fileSystem: mockFs, listFiles: (root) => Promise.resolve(Object.keys((mockFs as any)._files).filter(f => f.startsWith(root) && f.endsWith('.crux.json'))) });
-    const stack: any[] = (router as any).stack || [];
-    const dirLayer: any = stack.find(l => l?.route?.path === '/dir');
-    expect(dirLayer).toBeDefined();
-    const route = dirLayer.route;
-    expect(route?.methods?.get).toBe(true);
-
-    let payload: any = null;
-    const handler = route.stack[0].handle;
-    const res: any = { json: (p: any) => { payload = p; } };
-    await handler({}, res, () => {});
-
-    expect(payload && Array.isArray(payload.routes)).toBe(true);
-    const entry = payload.routes.find((r: any) => r.path === '/user/:id');
-    expect(entry).toBeDefined();
-    expect(entry.methods.includes('GET')).toBe(true);
-    expect(entry.params.includes('id')).toBe(true);
-    const act = entry.actions && entry.actions[0];
-    expect(Array.isArray(act.query) && act.query.includes('version')).toBe(true);
-  })
-  
   test("valid_mounts_invalid_skipped__partial_mounting_supported", async () => {
     const validActions = [
       { name: 'ok', description: 'ok', req: { method: 'get' } as any, res: { status: 200, bodyFile: null } as any }
@@ -154,29 +128,5 @@ describe("builder", () => {
     }
     expect(methods.has('get')).toBe(true);
   })
-  test("health_route_exposes_validation_results__available_by_default", async () => {
-    const validActions: ActionSpec[] = [
-      { name: 'getUser', description: 'ok', req: { method: 'GET' } as any, res: { status: 200, bodyFile: null } as any }
-    ] as any;
-    const invalidCfg = { actions: [ { name: 'bad', description: 'bad', req: {} as any, res: {} as any } ] };
-    const { mockFs, cruxDir } = createVfs(vfsDir, 'user/user', validActions, { res: { status: 200 } }, {
-      'bad/bad.crux.json': JSON.stringify(invalidCfg)
-    });
-    const router = await buildRouterFromFS(cruxDir, { fileSystem: mockFs, listFiles: (root) => Promise.resolve(Object.keys((mockFs as any)._files).filter(f => f.startsWith(root) && f.endsWith('.crux.json'))) });
-
-    const stack: any[] = (router as any).stack || [];
-    const healthLayer: any = stack.find(l => l?.route?.path === '/health');
-    expect(healthLayer).toBeDefined();
-    const route = healthLayer.route;
-    expect(route?.methods?.get).toBe(true);
-
-    let payload: any = null;
-    const handler = route.stack[0].handle;
-    const res: any = { json: (p: any) => { payload = p; } };
-    await handler({}, res, () => {});
-    expect(payload && typeof payload === 'object').toBe(true);
-    expect(Array.isArray(payload.issues)).toBe(true);
-    expect(payload.ok).toBe(false);
-    expect(payload.issues.length).toBeGreaterThan(0);
-  })
+  
 })

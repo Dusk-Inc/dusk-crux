@@ -1,11 +1,9 @@
 import { describe, test } from '@jest/globals'
 import { composePayload, deepMerge } from './payload.core'
-import { PayloadErrorCode, ResponseClass, PayloadConfigHeaders, PayloadDataHeaders } from './payload.enum'
-import type { RequestContext, ComposeOptions, ComposeResult } from './payload.models'
-import { HttpMethod, type ActionSpec } from '../validator'
+import { ResponseClass} from './payload.enum'
+import type { RequestContext } from './payload.models'
+import { HttpMethod } from '../validator'
 import { createVfs, vfsDir } from '../test/helpers'
-
-
 
 describe("composePayload", () => {
   test("combines_globals_and_route_configs__composed_correctly", async () => {
@@ -185,7 +183,6 @@ describe("composePayload", () => {
     expect(r1.status).toBe(201)
 
     const ctx2: RequestContext = { path: 'ovr/two', method: 'get' };
-    const body = JSON.stringify({})
     const { mockFs: fs2, cruxDir: dir2 } = createVfs(
       vfsDir,
       'ovr/two',

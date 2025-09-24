@@ -1,8 +1,7 @@
-import { PayloadModel, HeaderModel, SuccessModel } from "../payload/payload.models";
-import { ValidateResponseData, validateConfig } from "./validator.core";
-import { CruxConfig, ValidationSummaryModel } from "./validator.models";
+import { validateConfig } from "./validator.core";
+import { CruxConfig } from "./validator.models";
 import { ValidationCode, HttpMethod } from "./validator.enum";
-import * as utils from "../utils/utils";
+import * as utils from "../utils/utils.core";
 
 function baseConfig(): CruxConfig {
   return {
@@ -23,30 +22,6 @@ function baseConfig(): CruxConfig {
 function expectIssue(issues: Array<{code: string}>, code: ValidationCode) {
   expect(issues.some(i => i.code === code)).toBe(true);
 }
-
-describe("ValidateResponseData", () => {
-  test("valid_minimal_payload__ok_true", () => {
-    const contentTypeHeader: HeaderModel = {
-      headerName: "content-type",
-      headerValue: "application/json"
-    };
-    const headers: Array<HeaderModel> = [contentTypeHeader];
-    const successVariantOne: SuccessModel = {
-      action: "firstPayloadVariant",
-      status: 200,
-      data: [
-        { id: 1, name: "John Doe" }
-      ]
-    };
-    const responseData: PayloadModel = {
-      headers,
-      responses: [successVariantOne]
-    };
-    const actual: ValidationSummaryModel = ValidateResponseData(JSON.stringify(responseData));
-    expect(actual).toStrictEqual({ ok: true, issues: [] });
-  });
-});
-
 
 describe("validateConfig", () => {
   test("empty_actions__ACTIONS_EMPTY", () => {
@@ -191,4 +166,6 @@ describe("validateConfig", () => {
     const issues = validateConfig(cfg);
     expectIssue(issues, ValidationCode.METHOD_MISSING);
   });
+
+  
 });

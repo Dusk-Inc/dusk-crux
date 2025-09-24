@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { startServer } from "./server/server.core";
+import { startServer } from "./server/index";
 
 function parseArgs(argv: string[]) {
-  const args = { cmd: "run", port: 4000, latticeDir: ".lattice" };
+  const args = { cmd: "run", port: 4000, cruxDir: ".crux" };
   const rest = argv.slice(2);
 
   if (rest[0]) args.cmd = rest[0];
@@ -12,7 +12,7 @@ function parseArgs(argv: string[]) {
     if (a === "--port" || a === "-p") {
       args.port = Number(rest[++i] ?? args.port);
     } else if (a === "--root" || a === "-r") {
-      args.latticeDir = String(rest[++i] ?? args.latticeDir);
+      args.cruxDir = String(rest[++i] ?? args.cruxDir);
     }
   }
 
@@ -20,12 +20,12 @@ function parseArgs(argv: string[]) {
 }
 
 (async () => {
-  const { cmd, port, latticeDir } = parseArgs(process.argv);
+  const { cmd, port, cruxDir } = parseArgs(process.argv);
 
   if (cmd === "run") {
     await startServer({
       port,
-      latticeDir,
+      cruxDir,
       cwd: process.cwd()
     });
   } else {

@@ -1,7 +1,7 @@
-import { ValidationIssue, CruxConfig, ValidationSummaryModel, ValidationIssueModel, FsOptions, RunOptions } from "./validator.models";
+import { ValidationIssue, CruxConfig, ValidationSummaryModel, FsOptions, RunOptions } from "./validator.models";
 import { ValidationSeverity, PolicyMode, ValidationCode, HttpMethod } from "./validator.enum";
-import { statusForbidsBody, isValidHttpStatus, extractPathParamsFromDir } from "../utils/utils";
-import { fileExistsSync } from "../utils/utils";
+import { statusForbidsBody, isValidHttpStatus, extractPathParamsFromDir } from "../utils/utils.core";
+import { fileExistsSync } from "../utils/utils.core";
 import * as fs from "fs";
 
 export function validateNonEmptyActions(cfg: CruxConfig): ValidationIssue[] {
@@ -64,7 +64,7 @@ export function validateStatusPresenceAndValidity(cfg: CruxConfig): ValidationIs
       return;
     }
     if (!isValidHttpStatus(status)) {
-      issues.push({ severity: ValidationSeverity.ERROR, code: ValidationCode.STATUS_INVALID, message: `Invalid HTTP status '${status}'.`, path: `actions[${i}].res.status` });
+      issues.push({ severity: ValidationSeverity.WARNING, code: ValidationCode.STATUS_INVALID, message: `Invalid HTTP status '${status}'.`, path: `actions[${i}].res.status` });
     }
   });
   return issues;
@@ -165,51 +165,4 @@ export function validateConfig(cfg: CruxConfig, opts: RunOptions = {}): Validati
   
   issues.push(...validateBodyFilesExist(cfg, { checkFilesExist: !!opts.checkFilesExist, baseDir: opts.bodyFilesBaseDir }));
   return issues;
-}
-
-export function ValidateResponseData(payloadJson: string): ValidationSummaryModel {
-  const issues: ValidationIssueModel[] = [];
-
-  let payload: any;
-  try {
-    payload = JSON.parse(payloadJson);
-  } catch (e: any) {
-    issues.push({ code: ValidationCode.PARSE_ERROR, message: `Invalid JSON: ${e?.message || "unknown"}` });
-    return { ok: false, issues };
-  }
-
-  if (!Array.isArray(payload?.headers)) {
-    issues.push({ code: ValidationCode.HEADERS_INVALID, message: "headers must be an array", path: "headers" });
-  } else {
-    payload.headers.forEach((h: any, idx: number) => {
-      if (!h || typeof h !== "object") {
-        issues.push({ code: ValidationCode.HEADER_NOT_OBJECT, message: "header entry must be an object", path: `headers[${idx}]` });
-        return;
-      }
-      if (typeof h.headerName !== "string" || h.headerName.trim() === "") {
-        issues.push({ code: ValidationCode.HEADER_NAME_INVALID, message: "headerName must be a non-empty string", path: `headers[${idx}].headerName` });
-      }
-      if (typeof h.headerValue !== "string") {
-        issues.push({ code: ValidationCode.HEADER_VALUE_INVALID, message: "headerValue must be a string", path: `headers[${idx}].headerValue` });
-      }
-    });
-  }
-
-  if (!Array.isArray(payload?.responses) || payload.responses.length === 0) {
-    issues.push({ code: ValidationCode.RESPONSES_EMPTY, message: "responses must be a non-empty array", path: "responses" });
-  } else {
-    payload.responses.forEach((r: any, idx: number) => {
-      if (!r || typeof r !== "object") {
-        issues.push({ code: ValidationCode.RESPONSE_NOT_OBJECT, message: "response entry must be an object", path: `responses[${idx}]` });
-        return;
-      }
-      if (typeof r.status !== "number") {
-        issues.push({ code: ValidationCode.STATUS_MISSING, message: "response.status must be a number", path: `responses[${idx}].status` });
-      } else if (!isValidHttpStatus(r.status)) {
-        issues.push({ code: ValidationCode.STATUS_INVALID, message: `Invalid HTTP status '${r.status}'`, path: `responses[${idx}].status` });
-      }
-    });
-  }
-
-  return { ok: issues.length === 0, issues };
 }

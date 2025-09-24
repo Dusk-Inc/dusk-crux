@@ -50,6 +50,7 @@
                 }
             },
             "res": {
+                "status": 1300,
                 "bodyFile": "test_2.xml"
             }
         },

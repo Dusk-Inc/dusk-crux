@@ -112,6 +112,7 @@ Each feature lives under src/ (TS/Go) or app/ (Python).
 - errors – typed exceptions.
 - tests – unit tests.
 - spec.md – feature spec.
+- routes - API routes
 
 ```
 # TypeScript
@@ -119,16 +120,19 @@ users.core.ts
 users.models.ts
 users.enums.ts
 users.test.ts
+users.routes.ts
 
 # Python
 user_core.py
 user_models.py
 user_test.py
+user_routes.py
 
 # Go
 core.go
 models.go
 users_test.go
+routes.go
 ```
 
 ## UI Standards

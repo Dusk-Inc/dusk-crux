@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { PayloadErrorCode, ResponseClass } from './payload.enum'
 import { RequestContext, ComposeOptions, ComposeResult } from './payload.models'
-import { ValidationSummaryModel, ValidationIssueModel } from '../validator'
+import { ValidationSummaryModel, ValidationIssue } from '../validator'
 import { validateConfig } from '../validator'
 
 export async function composePayload(ctx: RequestContext, opts: ComposeOptions = {}): Promise<ComposeResult> {
@@ -71,7 +71,7 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
   const routeDir = path.dirname(routeConfigPath)
   const bodyFile = actionRes.bodyFile as any
   if (typeof bodyFile === 'string') {
-    await ensureRelativeBodyFile(routeDir, bodyFile)
+    await ensureRelativeBodyFile(bodyFile)
     body = await readBodyFile(fsys, routeDir, bodyFile)
   }
 
@@ -87,6 +87,33 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
     body,
     class: classifyStatus(status)
   }
+}
+
+export function composeCruxConfig(globalsJson: any | null, routeCfg: any): any {
+  const effectiveGlobals = deepMerge(globalsJson || {}, routeCfg?.globals || {})
+  const actions = Array.isArray(routeCfg?.actions) ? routeCfg.actions : []
+  const composedActions = actions.map((a: any) => {
+    const effReq = deepMerge(effectiveGlobals?.req || {}, a?.req || {})
+    const effRes = deepMerge(effectiveGlobals?.res || {}, a?.res || {})
+    const normReq = { ...(effReq || {}) }
+    if (typeof normReq.method === 'string') normReq.method = normReq.method.toLowerCase()
+    const q = normReq.query || {}
+    const p = normReq.params || {}
+    const query: Record<string, string> = {}
+    for (const k of Object.keys(q || {})) query[k] = String((q as any)[k])
+    const params: Record<string, string> = {}
+    for (const k of Object.keys(p || {})) params[k] = String((p as any)[k])
+    normReq.query = query
+    normReq.params = params
+    const normRes = { ...(effRes || {}) }
+    return {
+      name: a?.name,
+      description: a?.description,
+      req: normReq,
+      res: normRes
+    }
+  })
+  return { ...routeCfg, globals: effectiveGlobals, actions: composedActions }
 }
 
 export function deepMerge<T>(base: T, override: Partial<T>): T {
@@ -134,7 +161,7 @@ export function classifyStatus(status: number): ResponseClass {
   return ResponseClass.SERVER_ERROR
 }
 
-export async function ensureRelativeBodyFile(routeDir: string, bodyFile: string): Promise<void> {
+export async function ensureRelativeBodyFile(bodyFile: string): Promise<void> {
   if (path.isAbsolute(bodyFile)) {
     throw new Error('Absolute bodyFile paths are not allowed')
   }
@@ -146,7 +173,7 @@ export async function readBodyFile(fsys: typeof fs, baseDir: string, bodyFile: s
   return Buffer.isBuffer(data) ? data : Buffer.from(String(data))
 }
 
-export function toValidationSummary(issues: ValidationIssueModel[]): ValidationSummaryModel {
+export function toValidationSummary(issues: ValidationIssue[]): ValidationSummaryModel {
   return { ok: issues.length === 0, issues }
 }
 

@@ -1,20 +1,8 @@
-import { PolicyMode, ValidationSeverity, HttpNoBodyStatus, AuthScheme, BodyMode, DiagnosticsOnWarn, HttpMethod } from "./validator.enum";
-
-export interface HeaderSchemas {
-  [headerNameLower: string]: {
-    oneOf?: string[];
-    pattern?: string;
-    scheme?: AuthScheme | string;
-  };
-}
+import { PolicyMode, ValidationSeverity, BodyMode, DiagnosticsOnWarn, HttpMethod } from "./validator.enum";
 
 export interface HeaderPolicy {
   policy?: PolicyMode;
-  required?: string[];
-  optional?: string[];
-  forbidden?: string[];
-  schemas?: HeaderSchemas;
-  schema?: HeaderSchemas | Record<string, unknown>;
+  schema?: Record<string, unknown>;
   strip?: string[];
   trustProxy?: boolean;
 }
@@ -63,18 +51,12 @@ export interface ValidationIssue {
   severity: ValidationSeverity;
   code: string;
   message: string;
-  path: string;
-}
-
-export interface ValidationIssueModel {
-  code: string;
-  message: string;
   path?: string;
 }
 
 export interface ValidationSummaryModel {
   ok: boolean;
-  issues: ValidationIssueModel[];
+  issues: ValidationIssue[];
 }
 
 export interface FsOptions {

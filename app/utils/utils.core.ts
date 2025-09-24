@@ -37,11 +37,11 @@ export function fileExistsSync(fsModule: typeof import("fs"), path: string): boo
 }
 
 export function log(message: string){
-    console.log(`[dusk-lattice]: ${message}`)
+    console.log(`[dusk-crux]: ${message}`)
 }
 
 export function error(message: string, additional: any = ""){
-    console.error(`[dusk-lattice]: ${message} ${additional}`)
+    console.error(`[dusk-crux]: ${message} ${additional}`)
 }
 
 export function isValidHttpStatus(code: unknown): boolean {

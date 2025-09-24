@@ -2,9 +2,12 @@ import express, { Router } from "express";
 import fg from "fast-glob";
 import path from "path";
 import fs from "fs/promises";
-import { makeJsonHandler } from "../utils/utils";
-import { log, error } from '../utils/utils'
-import { validateConfig } from "../validator";
+import { log, error } from '../utils/utils.core'
+import { makeJsonHandler } from '../utils/utils.core'
+import { validateConfig, ValidationIssue } from "../validator";
+import { ValidationSeverity } from '../validator/validator.enum';
+import { ConsoleColors } from "../utils/utils.enum";
+import { composeCruxConfig } from "../payload";
 
 function toRouteSegment(seg: string) {
   if (seg.startsWith("[") && seg.endsWith("]")) {
@@ -47,7 +50,13 @@ export async function buildRouterFromFS(root: string, opts: BuildOptions = {}): 
     ? await opts.listFiles(root)
     : await fg(pattern, { cwd: root, dot: true, onlyFiles: true, absolute: true });
 
-  const parsed: Array<{ cfg: any; routePath: string; file: string }> = [];
+  // load globals.json once
+  let globals: any = null;
+  try {
+    const readFile = opts.fileSystem?.promises?.readFile ?? fs.readFile;
+    const raw = await readFile(path.join(root, 'globals.json'), 'utf8');
+    globals = JSON.parse(raw);
+  } catch {}
 
   for (const file of files) {
     const parts = relativize(file, root);
@@ -65,11 +74,11 @@ export async function buildRouterFromFS(root: string, opts: BuildOptions = {}): 
       continue;
     }
 
-    const normCfg = normalizeConfig(cfg);
-    const actions: any[] = Array.isArray(normCfg?.actions) ? normCfg.actions : [];
-    const issues = validateConfig(normCfg, { actionDirs: Array(actions.length).fill(routePath) });
+    const composed = composeCruxConfig(globals, cfg);
+    const actions: any[] = Array.isArray(composed?.actions) ? composed.actions : [];
+    const issues: ValidationIssue[] = validateConfig(composed, { actionDirs: Array(actions.length).fill(routePath) });
     if (issues.length === 0) {
-      const handler = makeJsonHandler(normCfg);
+      const handler = makeJsonHandler(composed);
       for (const a of actions) {
         const m = String(a?.req?.method || "").toLowerCase();
         if (!m || typeof (router as any)[m] !== "function") continue;
@@ -77,41 +86,28 @@ export async function buildRouterFromFS(root: string, opts: BuildOptions = {}): 
         log?.(`${m.toUpperCase()} ${routePath}  ←  ${path.relative(root, file)}#${a?.name ?? "action"}`);
       }
     } else {
-      log?.(`SKIP (invalid) ${routePath}  ←  ${path.relative(root, file)} (#issues=${issues.length})`);
-    }
+      logIssues(issues, routePath, path.relative(root, file))
 
-    parsed.push({ cfg: normCfg, routePath, file });
+    }
   }
 
-  router.get('/dir', (_req, res) => {
-    const routes = parsed.map(({ cfg, routePath }) => {
-      const actions: any[] = Array.isArray(cfg?.actions) ? cfg.actions : [];
-      const methods = Array.from(new Set(actions.map(a => String(a?.req?.method || '').toUpperCase()).filter(Boolean)));
-      const params = routePath.split('/').filter(s => s.startsWith(':')).map(s => s.slice(1));
-      const actionSummaries = actions.map(a => ({
-        name: a?.name,
-        method: String(a?.req?.method || '').toUpperCase(),
-        query: a?.req?.query ? Object.keys(a.req.query) : [],
-        params: a?.req?.params ? Object.keys(a.req.params) : [],
-        headers: a?.req?.headers ? {
-          required: Array.isArray(a.req.headers.required) ? a.req.headers.required : [],
-          optional: Array.isArray(a.req.headers.optional) ? a.req.headers.optional : [],
-          forbidden: Array.isArray(a.req.headers.forbidden) ? a.req.headers.forbidden : []
-        } : { required: [], optional: [], forbidden: [] }
-      }));
-      return { path: routePath, methods, params, actions: actionSummaries };
-    });
-    res.json({ routes });
-  });
-
-  router.get('/health', (_req, res) => {
-    const allIssues = parsed.flatMap(({ cfg, routePath }) => {
-      const n = Array.isArray(cfg?.actions) ? cfg.actions.length : 0;
-      const dirs = Array(n).fill(routePath);
-      return validateConfig(cfg, { actionDirs: dirs });
-    });
-    res.json({ ok: allIssues.length === 0, issues: allIssues });
-  });
-
   return router;
+}
+
+function logIssues(issues: ValidationIssue[], routePath: string, relativePath: string){
+  let logString = `SKIP (invalid) ${routePath}  ←  ${relativePath} (#issues=${issues.length})`
+  
+  for(let x=0; x<issues.length;x++){
+    let color = '';
+    if(issues[x].severity == ValidationSeverity.ERROR){ color=ConsoleColors.RED }
+    if(issues[x].severity == ValidationSeverity.WARNING){ color=ConsoleColors.YELLOW }
+    if(issues[x].severity == ValidationSeverity.INFO){ color=ConsoleColors.BLUE }
+    let issueString: string = ""
+    issueString += `\n\t\x1b[${color}Code: ${issues[x].code}\x1b[0m`
+    issueString += `\n\t\x1b[${color}Severity: ${issues[x].severity}\x1b[0m`
+    issueString += `\n\t\x1b[${color}Path: ${issues[x].path}\x1b[0m`
+    issueString += `\n\t\x1b[${color}Message: ${issues[x].message}\x1b[0m\n`
+    logString += issueString
+  }
+  log?.(logString)
 }

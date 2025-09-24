@@ -3,11 +3,12 @@ import path from "path";
 import chokidar from "chokidar";
 import { buildRouterFromFS } from "../builder/builder.core";
 import { log, error } from "console";
+import { registerServerRoutes } from './server.routes'
 
 
 type StartOpts = {
   port: number;
-  latticeDir: string;
+  cruxDir: string;
   cwd: string;
 };
 
@@ -15,23 +16,21 @@ export async function startServer(opts: StartOpts) {
   const app = express();
   app.use(express.json());
 
-  const absoluteLattice = path.resolve(opts.cwd, opts.latticeDir);
+  const absoluteCrux = path.resolve(opts.cwd, opts.cruxDir);
 
-  let current = await buildRouterFromFS(absoluteLattice);
+  let current = await buildRouterFromFS(absoluteCrux);
   app.use((req, res, next) => current(req, res, next));
 
-  app.get("/__lattice/health", (_req, res) =>
-    res.json({ ok: true, lattice: absoluteLattice })
-  );
+  await registerServerRoutes(app, absoluteCrux)
 
-  const watcher = chokidar.watch(absoluteLattice, {
+  const watcher = chokidar.watch(absoluteCrux, {
     ignoreInitial: true,
     persistent: true
   });
 
   const rebuild = async () => {
     try {
-      const nextRouter = await buildRouterFromFS(absoluteLattice);
+      const nextRouter = await buildRouterFromFS(absoluteCrux);
       current = nextRouter;
       log(`routes reloaded`);
     } catch (err) {
@@ -47,6 +46,6 @@ export async function startServer(opts: StartOpts) {
 
   app.listen(opts.port, () => {
     log(`listening on http://localhost:${opts.port}`);
-    log(`lattice root: ${absoluteLattice}`);
+    log(`crux root: ${absoluteCrux}`);
   });
 }
