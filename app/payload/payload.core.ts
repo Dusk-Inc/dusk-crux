@@ -112,8 +112,8 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
   const routeDir = path.dirname(routeConfigPath)
   const bodyFile = actionRes.bodyFile as any
   if (typeof bodyFile === 'string') {
-    await ensureRelativeBodyFile(bodyFile)
-    body = await readBodyFile(fsys, routeDir, bodyFile)
+    const absoluteBodyPath = resolveBodyFilePath(routeDir, bodyFile, cruxDir)
+    body = await readBodyFile(fsys, absoluteBodyPath)
   }
 
   const headers: Record<string,string> = {}
@@ -245,15 +245,21 @@ export function classifyStatus(status: number): ResponseClass {
   return ResponseClass.SERVER_ERROR
 }
 
-export async function ensureRelativeBodyFile(bodyFile: string): Promise<void> {
+export function resolveBodyFilePath(baseDir: string, bodyFile: string, allowedRoot: string): string {
   if (path.isAbsolute(bodyFile)) {
     throw new Error('Absolute bodyFile paths are not allowed')
   }
+  const normalizedRoot = path.resolve(allowedRoot)
+  const full = path.resolve(baseDir, bodyFile)
+  const relative = path.relative(normalizedRoot, full)
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('bodyFile path escapes the crux root directory')
+  }
+  return full
 }
 
-export async function readBodyFile(fsys: typeof fs, baseDir: string, bodyFile: string): Promise<Buffer> {
-  const full = path.resolve(baseDir, bodyFile)
-  const data = await (fsys as any).promises.readFile(full)
+export async function readBodyFile(fsys: typeof fs, absolutePath: string): Promise<Buffer> {
+  const data = await (fsys as any).promises.readFile(absolutePath)
   return Buffer.isBuffer(data) ? data : Buffer.from(String(data))
 }
 

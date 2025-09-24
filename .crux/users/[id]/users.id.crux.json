@@ -1,0 +1,20 @@
+{
+    "actions": [
+        {
+            "name": "user_id_test",
+            "description": "a test to ensure a correct route is possible.",
+            "req": {
+                "headers": {},
+                "params": {
+                    "id": 1
+                },
+                "query": {
+                    "date_created": "00010101"
+                }
+            },
+            "res": {
+                "bodyFile": "test_body.json"
+            }
+        }
+    ]
+}

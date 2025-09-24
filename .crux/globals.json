@@ -1,0 +1,18 @@
+{
+    "req": {
+            "method": "get",
+            "headers": {
+                "policy": "warn",
+                "schema": {
+                    "authorization": {
+                        "scheme": "Bearer",
+                        "pattern": "^[A-Za-z0-9._-]{20,}$"
+                    },
+                    "content-type": "application/json"
+                }
+            }
+        },
+        "res": {
+            "status": 200
+        }
+}

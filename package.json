@@ -1,11 +1,12 @@
 {
-  "name": "dusk-lattice",
+  "name": "dusk-crux",
   "version": "1.0.0",
   "description": "An API mock library built right into NPX to create self-contained, plug and play API routing.",
   "type": "commonjs",
   "main": "dist/cli.js",
   "bin": {
-    "dusk-lattice": "dist/cli.js"
+    "dusk-crux": "dist/cli.js",
+    "create-dusk-crux": "dist/create.cli.js"
   },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only app/cli.ts",

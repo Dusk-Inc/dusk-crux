@@ -219,6 +219,14 @@ describe("composePayload", () => {
     await expect(composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)).rejects.toThrow()
   })
 
+  test("bodyfile_outside_crux_forbidden__throws_error", async () => {
+    const ctx: RequestContext = { path: 'escape/route', method: 'get' };
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'escape/route', [
+      { name: 'escape', description: 'escape', req: { method: HttpMethod.GET }, res: { status: 200, bodyFile: '../secret.txt' } as any }
+    ])
+    await expect(composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)).rejects.toThrow()
+  })
+
   test("large_bodyfile_loads_without_truncation__composed_success", async () => {
     const ctx: RequestContext = { path: 'big/route', method: 'get' };
     const big = 'a'.repeat(5 * 1024 * 1024)
