@@ -28,24 +28,29 @@ async function scaffoldProject(opts: ScaffoldOptions) {
   await ensurePackageJson(opts.targetDir)
 }
 
-function getTemplateRoot(): string {
+function getTemplateRoot(): string | null {
   const templatePath = path.resolve(__dirname, '../..', 'resources', 'scaffold', '.crux')
   if (!fsSync.existsSync(templatePath)) {
-    throw new Error(`Template directory not found: ${templatePath}`)
+    return null
   }
   return templatePath
 }
 
-async function ensureCruxDirectory(targetDir: string, templateRoot: string) {
+async function ensureCruxDirectory(targetDir: string, templateRoot: string | null) {
   const destination = path.join(targetDir, '.crux')
-  try {
-    await fs.access(destination)
+  if (await pathExists(destination)) {
     console.log("'.crux' directory already exists - skipping scaffold copy")
     return
-  } catch {}
+  }
 
-  await copyDirectory(templateRoot, destination)
-  console.log("Created '.crux' directory")
+  if (templateRoot && (await pathExists(templateRoot))) {
+    await copyDirectory(templateRoot, destination)
+    console.log("Created '.crux' directory")
+    return
+  }
+
+  await fs.mkdir(destination, { recursive: true })
+  console.log("Created empty '.crux' directory")
 }
 
 async function ensurePackageJson(targetDir: string) {
@@ -119,6 +124,15 @@ function sortObjectKeys<T extends Record<string, any>>(obj: T): T {
       return acc
     }, {})
   return sorted as T
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath)
+    return true
+  } catch {
+    return false
+  }
 }
 
 main()

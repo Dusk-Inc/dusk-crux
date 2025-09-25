@@ -3,19 +3,68 @@
   "version": "1.0.0",
   "description": "An API mock library built right into NPX to create self-contained, plug and play API routing.",
   "type": "commonjs",
+  "author": "Dusk Inc.",
   "main": "dist/cli.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dusk-inc/dusk-crux.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dusk-inc/dusk-crux/issues"
+  },
+  "homepage": "https://github.com/dusk-inc/dusk-crux#readme",
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/dusk-inc"
+    }
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "dusk",
+    "crux",
+    "mock-api",
+    "api-mocking",
+    "contract-testing",
+    "fixtures",
+    "test-fixtures",
+    "json-schemas",
+    "schema-validation",
+    "filesystem-routing",
+    "file-system-router",
+    "express-middleware",
+    "dev-server",
+    "hot-reload",
+    "watch-mode",
+    "chokidar",
+    "payload-composition",
+    "globals-overrides",
+    "route-overrides",
+    "cli",
+    "typescript",
+    "nodejs",
+    "zero-config",
+    "local-first"
+  ],
+  "sideEffects": false,
   "bin": {
     "dusk-crux": "dist/cli.js",
     "create-dusk-crux": "dist/create.cli.js"
   },
+  "files": [
+    "dist",
+    "resources/scaffold",
+    "readme.md"
+  ],
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only app/cli.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/cli.js run",
     "test": "jest"
   },
-  "author": "Ryan Clark",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "chokidar": "^4.0.3",
     "express": "^5.1.0",
