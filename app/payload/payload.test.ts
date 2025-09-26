@@ -1,6 +1,6 @@
 import { describe, test } from '@jest/globals'
 import { composePayload, deepMerge } from './payload.core'
-import { ResponseClass} from './payload.enum'
+import { ResponseClass, PayloadErrorCode } from './payload.enum'
 import type { RequestContext } from './payload.models'
 import { HttpMethod } from '../validator'
 import { createVfs, vfsDir } from '../test/helpers'
@@ -255,6 +255,28 @@ describe("composePayload", () => {
     ] as any)
     const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
     expect(res.status).toBe(201)
+  })
+
+  test("header_content_type_distinguishes_actions__selects_matching_header", async () => {
+    const ctx: RequestContext = { path: 'headers/route', method: 'get', headers: { 'Content-Type': 'application/json' } };
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'headers/route', [
+      { name: 'json', description: 'returns json', req: { method: HttpMethod.GET, headers: { 'content-type': 'application/json' } as any }, res: { status: 200 } },
+      { name: 'xml', description: 'returns xml', req: { method: HttpMethod.GET, headers: { 'content-type': 'application/xml' } as any }, res: { status: 201 } }
+    ] as any)
+    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(200)
+  })
+
+  test("header_constraint_not_met__returns_no_matching_action", async () => {
+    const ctx: RequestContext = { path: 'headers/mismatch', method: 'get', headers: { 'content-type': 'application/xml' } };
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'headers/mismatch', [
+      { name: 'json', description: 'json only', req: { method: HttpMethod.GET, headers: { 'content-type': 'application/json' } as any }, res: { status: 200 } }
+    ] as any)
+    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
+    expect(res.ok).toBe(false)
+    expect(res.status).toBe(400)
+    expect(res.errors && res.errors[0]?.code).toBe(PayloadErrorCode.NO_MATCHING_ACTION)
   })
 
   test("query_version_beta_and_id_1_no_match__throws_no_matching_action_error", async () => {

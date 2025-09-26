@@ -60,8 +60,8 @@
     "dusk_crux_github_image.png"
   ],
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only app/cli.ts",
     "build": "tsc -p tsconfig.json",
+    "dev": "ts-node-dev --respawn --transpile-only app/cli.ts",
     "start": "node dist/cli.js run",
     "test": "jest"
   },

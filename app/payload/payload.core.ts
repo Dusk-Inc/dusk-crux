@@ -55,6 +55,7 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
   const globals = await loadGlobals(fsys, cruxDir)
   const routeCfg = await loadRouteConfig(fsys, routeConfigPath)
   const composedCfg = composeCruxConfig(globals, routeCfg)
+  const ctxHeaders = normalizeHeaderMap(ctx.headers)
 
   if (opts.validate) {
     const validationIssues = validateConfig(composedCfg as any)
@@ -81,19 +82,7 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
       class: classifyStatus(405)
     }
   }
-  const matchesConstraints = (a: any) => {
-    const qp = a?.req?.query || {}
-    const pp = a?.req?.params || {}
-    const has = (o: any, k: string) => o && Object.prototype.hasOwnProperty.call(o, k)
-    for (const k of Object.keys(qp)) {
-      if (!has(ctx.query || {}, k) || String((ctx.query as any)[k]) !== String((qp as any)[k])) return false
-    }
-    for (const k of Object.keys(pp)) {
-      if (!has(ctx.params || {}, k) || String((ctx.params as any)[k]) !== String((pp as any)[k])) return false
-    }
-    return true
-  }
-  const action = methodMatches.find(matchesConstraints)
+  const action = methodMatches.find(a => actionMatchesRequest(a, ctx, ctxHeaders))
   if (!action) {
     return {
       ok: false,
@@ -175,6 +164,45 @@ export function normalizeHeaders(h?: Record<string, string>): Record<string, str
   const out: Record<string, string> = {}
   for (const k of Object.keys(h || {})) out[k.toLowerCase()] = String((h as any)[k])
   return out
+}
+
+function normalizeHeaderMap(headers?: Record<string, unknown>): Record<string, string> {
+  if (!headers || typeof headers !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    if (value === undefined || value === null) continue
+    if (Array.isArray(value)) {
+      out[key.toLowerCase()] = value.map(v => String(v)).join(', ')
+      continue
+    }
+    if (typeof value === 'object') continue
+    out[key.toLowerCase()] = String(value)
+  }
+  return out
+}
+
+export function actionMatchesRequest(action: any, ctx: RequestContext, ctxHeaders: Record<string, string>): boolean {
+  const requiredQuery = action?.req?.query || {}
+  const requiredParams = action?.req?.params || {}
+  const requiredHeaders = normalizeHeaderMap(action?.req?.headers)
+  const has = (source: unknown, key: string) => !!source && typeof source === 'object' && Object.prototype.hasOwnProperty.call(source, key)
+
+  for (const key of Object.keys(requiredQuery)) {
+    if (!has(ctx.query, key)) return false
+    if (String((ctx.query as any)[key]) !== String((requiredQuery as any)[key])) return false
+  }
+
+  for (const key of Object.keys(requiredParams)) {
+    if (!has(ctx.params, key)) return false
+    if (String((ctx.params as any)[key]) !== String((requiredParams as any)[key])) return false
+  }
+
+  for (const [key, value] of Object.entries(requiredHeaders)) {
+    if (!has(ctxHeaders, key)) return false
+    if (ctxHeaders[key] !== value) return false
+  }
+
+  return true
 }
 
 export function resolveRouteConfigPath(cruxDir: string, routePath: string): string {
