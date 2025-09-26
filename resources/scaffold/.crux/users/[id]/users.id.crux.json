@@ -5,9 +5,7 @@
             "description": "a test to ensure a correct route is possible.",
             "req": {
                 "headers": {
-                    "schema": {
-                        "content-type": "application/json"
-                    }
+                    "accept": "application/json"
                 },
                 "params": {
                     "id": 1
@@ -17,7 +15,25 @@
                 }
             },
             "res": {
-                "bodyFile": "test_4.json"
+                "bodyFile": "test_body.json"
+            }
+        },
+        {
+            "name": "user_id_test_xml",
+            "description": "a test to ensure a correct route is possible with different body data.",
+            "req": {
+                "headers": {
+                    "accept": "application/xml"
+                },
+                "params": {
+                    "id": 1
+                },
+                "query": {
+                    "date_created": "00010101"
+                }
+            },
+            "res": {
+                "bodyFile": "test_body.xml"
             }
         }
     ]
