@@ -268,6 +268,27 @@ describe("composePayload", () => {
     expect(res.status).toBe(200)
   })
 
+  test("merged_response_headers_forward_to_payload__cors_headers_preserved", async () => {
+    const ctx: RequestContext = { path: 'headers/cors', method: 'post' };
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'headers/cors',
+      [
+        {
+          name: 'cors',
+          description: 'cors action',
+          req: { method: HttpMethod.POST },
+          res: { status: 200, headers: { 'Access-Control-Allow-Origin': '*' } } as any
+        }
+      ] as any,
+      { res: { status: 200, headers: { 'Access-Control-Allow-Headers': 'content-type' } } }
+    )
+    const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
+    expect(res.ok).toBe(true)
+    expect(res.headers['access-control-allow-origin']).toBe('*')
+    expect(res.headers['access-control-allow-headers']).toBe('content-type')
+  })
+
   test("header_constraint_not_met__returns_no_matching_action", async () => {
     const ctx: RequestContext = { path: 'headers/mismatch', method: 'get', headers: { 'content-type': 'application/xml' } };
     const { mockFs, cruxDir } = createVfs(vfsDir, 'headers/mismatch', [

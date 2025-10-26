@@ -105,8 +105,11 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
     body = await readBodyFile(fsys, absoluteBodyPath)
   }
 
-  const headers: Record<string,string> = {}
-  if (typeof bodyFile === 'string') {
+  const headers: Record<string, string> = {
+    ...normalizeHeaders(globalRes?.headers as Record<string, string> | undefined),
+    ...normalizeHeaders(actionRes?.headers as Record<string, string> | undefined)
+  }
+  if (typeof bodyFile === 'string' && !headers['content-type']) {
     headers['content-type'] = contentTypeFor(bodyFile)
   }
 
