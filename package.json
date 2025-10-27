@@ -1,6 +1,6 @@
 {
   "name": "dusk-crux",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "description": "An API mock library built right into NPX to create self-contained, plug and play API routing.",
   "type": "commonjs",
   "author": "Dusk Inc.",
