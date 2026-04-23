@@ -1,0 +1,14 @@
+{
+    "name": "dusk-crux",
+    "language": "",
+    "type": "project",
+    "tasks": {
+        "build": "",
+        "test": "",
+        "install": "",
+        "add": "",
+        "uninstall": "",
+        "contain": "",
+        "run": ""
+    }
+}
