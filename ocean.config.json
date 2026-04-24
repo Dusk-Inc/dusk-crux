@@ -1,14 +1,15 @@
 {
     "name": "dusk-crux",
-    "language": "",
+    "language": "typescript",
     "type": "project",
     "tasks": {
-        "build": "",
-        "test": "",
-        "install": "",
+        "build": "npm run build",
+        "test": "npm test",
+        "install": "npm install",
         "add": "",
         "uninstall": "",
-        "contain": "",
+        "contain": "VERSION=$(node -p \"require('./package.json').version\") && docker build -t duskinc/dusk-crux:$VERSION -t duskinc/dusk-crux:latest . && docker push duskinc/dusk-crux:$VERSION && docker push duskinc/dusk-crux:latest",
+        "publish": "npm publish --access public",
         "run": ""
     }
 }
