@@ -57,13 +57,15 @@ Example route file (`.crux/users/[id]/users.id.crux.json`):
 }
 ```
 
-### Globals, routes, and actions
-- `globals.json` sets defaults for requests and responses: shared headers, default status codes, or reusable query parameters.
-- Each route file can declare its own `globals` block, which merges on top of `globals.json`, then the `actions` array merges on type of the `globals` block. Actions describe concrete scenarios the server can replay.
-- Action matching is deterministic. Crux normalizes method names, then picks the first action whose `req.method`, `req.params`, `req.headers` and `req.query` all match the incoming request. 
+### Defaults, routes, and actions
+- `defaults.json` sets defaults for requests and responses at any level of the `.crux` tree: shared headers, default status codes, or reusable query parameters. The root `defaults.json` applies to every route; a `defaults.json` inside any subfolder applies only to routes beneath that folder.
+- Defaults cascade from the root down. Each `defaults.json` deep-merges on top of the accumulated ancestor defaults; a child file overrides only the fields it expressly declares. Each route file's own `globals` block then merges on top of the fully-cascaded defaults, and finally every action's `req`/`res` merges on top of that.
+- Deep-merge semantics: object values merge key-by-key, **arrays replace wholesale**, and a child writing `"field": null` **erases** the inherited value.
+- `defaults.json` files never declare `actions` — they only contribute `req`/`res` defaults. They are not passed through route validation.
+- Action matching is deterministic. Crux normalizes method names, then picks the first action whose `req.method`, `req.params`, `req.headers` and `req.query` all match the incoming request.
 - Missing methods yield a 405 with an `Allow` header. Missing matches yield a structured 400 explaining the mismatch.
 
-Example globals file (`.crux/globals.json`):
+Example root defaults (`.crux/defaults.json`):
 
 ```json
 {
@@ -82,6 +84,36 @@ Example globals file (`.crux/globals.json`):
   },
   "res": {
     "status": 200
+  }
+}
+```
+
+Example cascading defaults — relax CORS for just the `/v1/public/**` subtree while every other route keeps the root defaults:
+
+```
+.crux/
+  defaults.json                    # root defaults (strict auth, no CORS)
+  v1/
+    public/
+      defaults.json                # adds CORS headers for this subtree
+      health/
+        health.crux.json
+      version/
+        version.crux.json
+    internal/
+      users/
+        users.crux.json            # inherits root defaults only
+```
+
+`.crux/v1/public/defaults.json`:
+
+```json
+{
+  "res": {
+    "headers": {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, OPTIONS"
+    }
   }
 }
 ```
@@ -110,6 +142,11 @@ Fixtures referenced by the example route:
   <famous_quote>WRONG! It's a list.</famous_quote>
 </user>
 ```
+
+### CORS preflight
+- Every route automatically answers `OPTIONS` with `204 No Content` so browser preflight requests can pass. The response includes the merged `res.headers` from every cascaded `defaults.json` and the route file, so CORS headers declared in defaults (e.g. `access-control-allow-origin`, `access-control-allow-methods`, `access-control-allow-headers`) are echoed back on the preflight.
+- The auto-registered preflight also sets an `Allow` header listing every method declared on the route, plus `OPTIONS`.
+- If a route defines its own `OPTIONS` action, that action wins and the auto-preflight is skipped.
 
 ### Operator utilities
 - The root route (`GET /`) lists every discovered route, its dynamic params, and the available actions. Use it to confirm wiring before invoking real clients.

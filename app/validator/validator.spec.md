@@ -92,7 +92,7 @@ The feature will take in the JSON files from the .crux folder at the root of the
 }
 ```
 
-With the `globals.json` looking something like this:
+With the root `defaults.json` looking something like this:
 ```json
 {
     "req": {
@@ -150,7 +150,7 @@ The validator should output a list of issues that describe which JSON files have
 28. For headers and params, reserved JS/TS keywords and names like `__proto__` are forbiddden to prevent injection or runtime issues.
 
 ## Constraints
-1. The validator must take into account that there is a "globals.json" file that defines global settings that can later be overwritten by the individual json files if needed.
+1. The validator runs against each `.crux.json` route file only. Cascading `defaults.json` files (at the root and any subfolder) provide request/response defaults that merge into the composed route config **before** validation — the validator sees the fully-cascaded result. `defaults.json` files themselves are never passed through the validator, because they never declare an `actions` array.
 2. Policy attribute is allowed to have "error", "warn", "info" as configurable flags.
 3. the /health endpoint must return 200 if no errors, and 500 if warnings/errors exist. The endpoint should be defined in a seperate "routes" file.
 4. Validator must complete within 10 seconds for 100 files of 1mb each.
