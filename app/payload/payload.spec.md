@@ -5,10 +5,10 @@ This feature composes the response based on global and local configurations in t
 This feature receives an object that described the path to look for in the .crux folder and any headers/query values sent from the original request.
 
 ## Outputs
-This feature will compose a response from the globals.json and the route that was called, with the route file overwritting the globals when the same key is used.
+This feature will compose a response from the cascading `defaults.json` files (root and any ancestor folders) and the route that was called, with deeper folder defaults overriding shallower ones, and the route file overriding all defaults when the same key is used.
 
 ## Tests
-1. Payload successfully combines configurations from globals.json as well as globals and route settings in the route file being requested (see complex.crux.json for example).
+1. Payload successfully combines configurations from cascading `defaults.json` files as well as the route's own `globals` block and its actions (see complex.crux.json for example).
 2. Payload is able to compose a response from a request object with method "get" and with a 200 status response and no body.
 3. Payload is able to compose a response from a request object with method "get" and with a 200 status and json body from file.
 4. Payload is able to compose a response from a request object with method "get" and with a 400 error with message and code.
@@ -20,7 +20,7 @@ This feature will compose a response from the globals.json and the route that wa
 10. Payload is able to compose a response from a request object with a method "patch" and with a 400 status error with message and code.
 11. Payload is able to compose a response from a request object with method "patch" and with a 200 status and json body from file.
 12. Deep object merge prefers route over globals for overlapping nested keys; arrays replace, not concat.
-13. Route-level globals override globals.json, and action-level overrides route-level for the same keys.
+13. Defaults cascade from the crux root down to the route's folder; deeper folders override shallower ones; the route file's own `globals` block overrides the cascaded defaults; action-level overrides route-level for the same keys.
 14. Keys unique to lower precedence survive merge (no accidental deletion).
 15. Method name matching is case-insensitive (e.g., "GET" vs "get").
 16. Absolute bodyFile path is not allowed and throws error if attempted
@@ -39,8 +39,10 @@ This feature will compose a response from the globals.json and the route that wa
 29. Given a route has a parameter folder `[<folder_name>]` in the path, when payload checks the request object and finds a matching parameter, the payload is able to match the request to an action in the route file.
 
 ## Constraints
-- If globals.json is missing, ignore it.
-- Objects merge deeply. Don't concat, just add unique items from both, favoring the .crux file configurations.
+- If any `defaults.json` in the cascade chain is missing, skip it and continue with the remaining ancestor files.
+- `defaults.json` files never declare `actions` and are not passed through route validation.
+- A legacy `globals.json` found under the tree is treated as a no-op and logged as a deprecation warning (renamed to `defaults.json` in 2.0).
+- Objects merge deeply. Don't concat, just add unique items from both, favoring the .crux file configurations. Arrays replace wholesale; `null` at a child level erases the inherited value.
 - If the route exists but the method doesn’t → 405 with Allow header (all defined methods for the route).
 - Files referenced by the bodyFile attribute in the res attribute of an action should resolve to a file in the same directory as the route file.
 - normalize header lookups so errors aren't thrown over case.

@@ -5,12 +5,12 @@ export function createVfs(
   cruxDir: string,
   routePath: string,
   actions: ActionSpec[],
-  globals: any = { res: { status: 200 } },
+  defaults: any = { res: { status: 200 } },
   extraFiles: Record<string, string> = {}
 ) {
   if (!Array.isArray(actions)) throw new Error('actions must be an array of ActionSpec')
   const files: Record<string, string> = {
-    [`${cruxDir}/globals.json`]: JSON.stringify(globals),
+    [`${cruxDir}/defaults.json`]: JSON.stringify(defaults),
     [`${cruxDir}/${routePath}.crux.json`]: JSON.stringify({ actions })
   }
   for (const [rel, content] of Object.entries(extraFiles)) {

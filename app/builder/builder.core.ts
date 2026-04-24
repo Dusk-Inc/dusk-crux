@@ -4,7 +4,7 @@ import { log } from '../utils/utils.core'
 import { validateConfig, ValidationIssue } from "../validator";
 import { ValidationSeverity } from '../validator/validator.enum';
 import { ConsoleColors } from "../utils/utils.enum";
-import { composePayload, loadCruxRoutes, LoadCruxRoutesOptions } from "../payload";
+import { composePayload, composePreflight, loadCruxRoutes, LoadCruxRoutesOptions } from "../payload";
 import type { CruxRouteDescriptor } from "../payload/payload.core";
 import type { RequestContext, ComposeResult } from "../payload/payload.models";
 
@@ -47,6 +47,27 @@ function registerRoute(router: Router, descriptor: CruxRouteDescriptor, root: st
       ;(router as any)[method](descriptor.routePath, handler)
     }
     log?.(`${method.toUpperCase()} ${descriptor.routePath}  ←  ${path.relative(root, descriptor.file)}#${action?.name ?? 'action'}`)
+  }
+
+  if (!methods.has('options')) {
+    const preflight = createPreflightHandler(descriptor, root, opts)
+    ;(router as any).options(descriptor.routePath, preflight)
+    log?.(`OPTIONS ${descriptor.routePath}  ←  ${path.relative(root, descriptor.file)}#preflight`)
+  }
+}
+
+function createPreflightHandler(descriptor: CruxRouteDescriptor, root: string, opts: BuildOptions) {
+  return async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await composePreflight({
+        cruxDir: root,
+        fileSystem: opts.fileSystem as any,
+        routeFile: descriptor.file
+      })
+      applyComposeResult(res, result)
+    } catch (err) {
+      next(err)
+    }
   }
 }
 

@@ -1,12 +1,12 @@
-import { describe, test } from '@jest/globals'
-import { composePayload, deepMerge } from './payload.core'
+import { describe, test, expect, jest } from '@jest/globals'
+import { composePayload, composePreflight, deepMerge, loadDefaultsChain, loadCruxRoutes } from './payload.core'
 import { ResponseClass, PayloadErrorCode } from './payload.enum'
 import type { RequestContext } from './payload.models'
 import { HttpMethod } from '../validator'
 import { createVfs, vfsDir } from '../test/helpers'
 
 describe("composePayload", () => {
-  test("combines_globals_and_route_configs__composed_correctly", async () => {
+  test("combines_defaults_and_route_configs__composed_correctly", async () => {
     const ctx: RequestContext = { path: 'complex/complex', method: 'post' };
     const { mockFs, cruxDir } = createVfs(vfsDir, 'complex/complex', [
       { name: 'test_1', description: 'example', req: { method: HttpMethod.POST }, res: {status:200} }
@@ -166,7 +166,7 @@ describe("composePayload", () => {
     expect(merged.obj).toEqual({ x: 1, y: 3, z: 4 })
   })
 
-  test("route_level_globals_override_globals_json_action_overrides_route__composed_correctly", async () => {
+  test("route_level_globals_override_defaults_json_action_overrides_route__composed_correctly", async () => {
     const ctx1: RequestContext = { path: 'ovr/one', method: 'get' };
     const { mockFs: fs1, cruxDir: dir1 } = createVfs(
       vfsDir,
@@ -386,16 +386,16 @@ describe("composePayload", () => {
     expect(res.allow && res.allow.includes('GET')).toBe(true)
   })
 
-  test("globals_json_missing__ignored_and_route_still_composes", async () => {
-    const ctx: RequestContext = { path: 'noglobals/route', method: 'get' };
+  test("defaults_json_missing__ignored_and_route_still_composes", async () => {
+    const ctx: RequestContext = { path: 'nodefaults/route', method: 'get' };
 
-    const { mockFs, cruxDir } = createVfs(vfsDir, 'noglobals/route', [
-      { name: 'ok', description: 'no globals present', req: { method: HttpMethod.GET }, res: { status: 204 } }
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'nodefaults/route', [
+      { name: 'ok', description: 'no defaults present', req: { method: HttpMethod.GET }, res: { status: 204 } }
     ], { res: { status: 200 } })
 
-    const globalsPath = `${cruxDir}/globals.json`
+    const defaultsPath = `${cruxDir}/defaults.json`
     const originalExists = mockFs.existsSync.bind(mockFs)
-    mockFs.existsSync = (p: string) => p === globalsPath ? false : originalExists(p)
+    mockFs.existsSync = (p: string) => p === defaultsPath ? false : originalExists(p)
 
     const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
     expect(res.ok).toBe(true)
@@ -419,7 +419,7 @@ describe("composePayload", () => {
     expect(sorted).toEqual(['GET', 'POST'])
   })
 
-  test("method_inherited_from_globals__request_matches", async () => {
+  test("method_inherited_from_defaults__request_matches", async () => {
     const ctx: RequestContext = { path: 'inherit/method', method: 'get' };
     const { mockFs, cruxDir } = createVfs(
       vfsDir,
@@ -433,6 +433,55 @@ describe("composePayload", () => {
     const res = await composePayload(ctx, { cruxDir, fileSystem: mockFs } as any)
     expect(res.ok).toBe(true)
     expect(res.status).toBe(204)
+  })
+
+  test("preflight_returns_204_with_defaults_cors_headers__allow_lists_action_methods_and_options", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'cors/route',
+      [
+        { name: 'get', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any,
+        { name: 'post', description: 'd', req: { method: HttpMethod.POST }, res: { status: 201 } } as any
+      ],
+      {
+        res: {
+          status: 200,
+          headers: {
+            'access-control-allow-origin': '*',
+            'access-control-allow-methods': 'GET, POST, OPTIONS',
+            'access-control-allow-headers': 'content-type, accept'
+          }
+        }
+      }
+    )
+    const res = await composePreflight({
+      cruxDir,
+      fileSystem: mockFs,
+      routeFile: `${cruxDir}/cors/route.crux.json`
+    } as any)
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(204)
+    expect(res.headers['access-control-allow-origin']).toBe('*')
+    expect(res.headers['access-control-allow-headers']).toBe('content-type, accept')
+    expect(res.body).toBeUndefined()
+    const allow = [...(res.allow ?? [])].sort()
+    expect(allow).toEqual(['GET', 'OPTIONS', 'POST'])
+  })
+
+  test("preflight_with_no_defaults_cors_headers__returns_empty_headers_and_204", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'bare/route',
+      [ { name: 'g', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any ]
+    )
+    const res = await composePreflight({
+      cruxDir,
+      fileSystem: mockFs,
+      routeFile: `${cruxDir}/bare/route.crux.json`
+    } as any)
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(204)
+    expect(Object.keys(res.headers)).toHaveLength(0)
   })
 
   test("dynamic_route_with_route_file__returns_expected_body", async () => {
@@ -471,5 +520,172 @@ describe("composePayload", () => {
     expect(res.status).toBe(200)
     expect((res.body as Buffer).toString()).toBe(body)
     expect(res.headers['content-type']).toBe('application/json; charset=utf-8')
+  })
+})
+
+describe("loadDefaultsChain", () => {
+  test("two_level_cascade_child_overrides_parent__merged_correctly", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any ],
+      { res: { status: 200, headers: { x: '1', y: '2' } } },
+      { 'a/defaults.json': JSON.stringify({ res: { headers: { y: '3', z: '4' } } }) }
+    )
+    const merged = await loadDefaultsChain(mockFs, cruxDir, `${cruxDir}/a`)
+    expect(merged.res.status).toBe(200)
+    expect(merged.res.headers).toEqual({ x: '1', y: '3', z: '4' })
+  })
+
+  test("three_level_cascade_with_gap__middle_folder_skipped_ancestors_applied", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/b/c/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any ],
+      { res: { status: 200, headers: { x: '1' } } },
+      { 'a/b/c/defaults.json': JSON.stringify({ res: { headers: { z: '9' } } }) }
+    )
+    const merged = await loadDefaultsChain(mockFs, cruxDir, `${cruxDir}/a/b/c`)
+    expect(merged.res.status).toBe(200)
+    expect(merged.res.headers).toEqual({ x: '1', z: '9' })
+  })
+
+  test("child_null_erases_inherited_value__field_removed", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any ],
+      { res: { status: 200, headers: { x: '1' } } },
+      { 'a/defaults.json': JSON.stringify({ res: { headers: null } }) }
+    )
+    const merged = await loadDefaultsChain(mockFs, cruxDir, `${cruxDir}/a`)
+    expect(merged.res.headers).toBeNull()
+  })
+
+  test("target_equal_to_crux_root__returns_root_defaults_only", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'solo/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any ],
+      { res: { status: 200, headers: { x: '1' } } }
+    )
+    const merged = await loadDefaultsChain(mockFs, cruxDir, cruxDir)
+    expect(merged.res.headers).toEqual({ x: '1' })
+  })
+
+  test("target_outside_crux_dir__throws_error", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any ]
+    )
+    await expect(loadDefaultsChain(mockFs, cruxDir, '/vfs/outside')).rejects.toThrow()
+  })
+
+  test("no_defaults_files_anywhere__returns_null", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/b/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any ]
+    )
+    const originalExists = mockFs.existsSync.bind(mockFs)
+    mockFs.existsSync = (p: string) => p.endsWith('defaults.json') ? false : originalExists(p)
+    const merged = await loadDefaultsChain(mockFs, cruxDir, `${cruxDir}/a/b`)
+    expect(merged).toBeNull()
+  })
+})
+
+describe("composePayload with cascading defaults", () => {
+  test("intermediate_folder_defaults_cascade_to_route__granular_override_applied", async () => {
+    const ctx: RequestContext = { path: 'a/b/route', method: 'get' }
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/b/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: {} } as any ],
+      { res: { status: 200, headers: { x: '1', y: '2' } } },
+      { 'a/defaults.json': JSON.stringify({ res: { headers: { y: '3' } } }) }
+    )
+    const res = await composePayload(ctx, {
+      cruxDir,
+      fileSystem: mockFs,
+      routeFile: `${cruxDir}/a/b/route.crux.json`
+    } as any)
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(200)
+    expect(res.headers['x']).toBe('1')
+    expect(res.headers['y']).toBe('3')
+  })
+
+  test("route_globals_block_overrides_folder_defaults__route_wins", async () => {
+    const ctx: RequestContext = { path: 'a/route', method: 'get' }
+    const routeJson = JSON.stringify({
+      globals: { res: { status: 202 } },
+      actions: [ { name: 'r', description: 'd', req: { method: 'get' }, res: {} } ]
+    })
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: {} } as any ],
+      { res: { status: 200 } },
+      {
+        'a/defaults.json': JSON.stringify({ res: { status: 201 } }),
+        'a/route.crux.json': routeJson
+      }
+    )
+    const res = await composePayload(ctx, {
+      cruxDir,
+      fileSystem: mockFs,
+      routeFile: `${cruxDir}/a/route.crux.json`
+    } as any)
+    expect(res.status).toBe(202)
+  })
+
+  test("action_res_status_overrides_folder_defaults_and_route_globals__action_wins", async () => {
+    const ctx: RequestContext = { path: 'a/route', method: 'get' }
+    const routeJson = JSON.stringify({
+      globals: { res: { status: 202 } },
+      actions: [ { name: 'r', description: 'd', req: { method: 'get' }, res: { status: 203 } } ]
+    })
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: { status: 203 } } as any ],
+      { res: { status: 200 } },
+      {
+        'a/defaults.json': JSON.stringify({ res: { status: 201 } }),
+        'a/route.crux.json': routeJson
+      }
+    )
+    const res = await composePayload(ctx, {
+      cruxDir,
+      fileSystem: mockFs,
+      routeFile: `${cruxDir}/a/route.crux.json`
+    } as any)
+    expect(res.status).toBe(203)
+  })
+})
+
+describe("loadCruxRoutes legacy detection", () => {
+  test("legacy_globals_json_present__logs_deprecation_warning", async () => {
+    const { mockFs, cruxDir } = createVfs(
+      vfsDir,
+      'a/route',
+      [ { name: 'r', description: 'd', req: { method: HttpMethod.GET }, res: { status: 200 } } as any ],
+      { res: { status: 200 } },
+      { 'a/globals.json': JSON.stringify({ res: { headers: { legacy: 'yes' } } }) }
+    )
+    const legacyPath = `${cruxDir}/a/globals.json`
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await loadCruxRoutes(cruxDir, {
+        fileSystem: mockFs,
+        listFiles: async (root) => Object.keys((mockFs as any)._files).filter((f: string) => f.startsWith(root) && f.endsWith('.crux.json')),
+        listLegacyFiles: async () => [legacyPath]
+      })
+      const warned = logSpy.mock.calls.some((call: any[]) => String(call[0] ?? '').includes("legacy 'globals.json'") && String(call[0]).includes(legacyPath))
+      expect(warned).toBe(true)
+    } finally {
+      logSpy.mockRestore()
+    }
   })
 })

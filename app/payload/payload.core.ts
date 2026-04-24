@@ -5,6 +5,7 @@ import { PayloadErrorCode, ResponseClass } from './payload.enum'
 import { RequestContext, ComposeOptions, ComposeResult } from './payload.models'
 import { ValidationSummaryModel, ValidationIssue } from '../validator'
 import { validateConfig } from '../validator'
+import { log } from '../utils/utils.core'
 
 type FileSystemService = {
   existsSync?: (p: string) => boolean
@@ -52,9 +53,9 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
   const cruxDir = opts.cruxDir ?? path.resolve(process.cwd(), '.crux')
 
   const routeConfigPath = opts.routeFile ?? resolveRouteConfigPath(cruxDir, ctx.path)
-  const globals = await loadGlobals(fsys, cruxDir)
+  const defaults = await loadDefaultsChain(fsys, cruxDir, path.dirname(routeConfigPath))
   const routeCfg = await loadRouteConfig(fsys, routeConfigPath)
-  const composedCfg = composeCruxConfig(globals, routeCfg)
+  const composedCfg = composeCruxConfig(defaults, routeCfg)
   const ctxHeaders = normalizeHeaderMap(ctx.headers)
 
   if (opts.validate) {
@@ -119,6 +120,42 @@ export async function composePayload(ctx: RequestContext, opts: ComposeOptions =
     headers,
     body,
     class: classifyStatus(status)
+  }
+}
+
+export async function composePreflight(opts: ComposeOptions = {}): Promise<ComposeResult> {
+  const fsys = opts.fileSystem ?? fs
+  const cruxDir = opts.cruxDir ?? path.resolve(process.cwd(), '.crux')
+  const routeConfigPath = opts.routeFile
+
+  const targetDir = routeConfigPath ? path.dirname(routeConfigPath) : cruxDir
+  const defaults = await loadDefaultsChain(fsys, cruxDir, targetDir)
+  let routeCfg: any = null
+  if (routeConfigPath) {
+    try {
+      routeCfg = await loadRouteConfig(fsys, routeConfigPath)
+    } catch {
+      routeCfg = null
+    }
+  }
+  const composedCfg = composeCruxConfig(defaults, routeCfg)
+  const globalRes = composedCfg?.globals?.res ?? {}
+  const headers = normalizeHeaders(globalRes?.headers as Record<string, string> | undefined)
+
+  const actions: any[] = Array.isArray(composedCfg?.actions) ? composedCfg.actions : []
+  const methods = new Set<string>()
+  for (const action of actions) {
+    const m = String(action?.req?.method || '').toUpperCase()
+    if (m) methods.add(m)
+  }
+  methods.add('OPTIONS')
+
+  return {
+    ok: true,
+    status: 204,
+    headers,
+    allow: Array.from(methods),
+    class: classifyStatus(204)
   }
 }
 
@@ -219,17 +256,46 @@ export function resolveRouteConfigPath(cruxDir: string, routePath: string): stri
   return path.join(cruxDir, `${target}.crux.json`)
 }
 
-export async function loadGlobals(fsys: FileSystemService | typeof fs | undefined, cruxDir: string): Promise<any | null> {
+export async function loadDefaults(fsys: FileSystemService | typeof fs | undefined, dir: string): Promise<any | null> {
   const { readFile, existsSync } = resolveReadFile(fsys)
-  const globalsPath = path.join(cruxDir, 'globals.json')
-  if (existsSync && !existsSync(globalsPath)) return null
+  const defaultsPath = path.join(dir, 'defaults.json')
+  if (existsSync && !existsSync(defaultsPath)) return null
   try {
-    const raw = await readFile(globalsPath, 'utf8')
+    const raw = await readFile(defaultsPath, 'utf8')
     return JSON.parse(raw)
   } catch (error: any) {
     if (error && typeof error === 'object' && (error as any).code === 'ENOENT') return null
     throw error
   }
+}
+
+export async function loadDefaultsChain(
+  fsys: FileSystemService | typeof fs | undefined,
+  cruxDir: string,
+  targetDir: string
+): Promise<any | null> {
+  const normalize = (p: string) => p.replace(/[\\/]+/g, path.sep)
+  const root = path.resolve(normalize(cruxDir))
+  const target = path.resolve(normalize(targetDir))
+  const rel = path.relative(root, target)
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`targetDir ${targetDir} escapes cruxDir ${cruxDir}`)
+  }
+  const segments = rel === '' ? [] : rel.split(path.sep).filter(Boolean)
+  const chain: string[] = [root]
+  let current = root
+  for (const seg of segments) {
+    current = path.join(current, seg)
+    chain.push(current)
+  }
+  let accumulator: any = null
+  for (const dir of chain) {
+    const cfg = await loadDefaults(fsys, dir)
+    if (cfg !== null) {
+      accumulator = accumulator === null ? cfg : deepMerge(accumulator, cfg)
+    }
+  }
+  return accumulator
 }
 
 export async function loadRouteConfig(fsys: FileSystemService | typeof fs | undefined, routeConfigPath: string): Promise<any> {
@@ -241,6 +307,7 @@ export async function loadRouteConfig(fsys: FileSystemService | typeof fs | unde
 export type LoadCruxRoutesOptions = {
   fileSystem?: FileSystemService | typeof fs
   listFiles?: (root: string) => Promise<string[]>
+  listLegacyFiles?: (root: string) => Promise<string[]>
 }
 
 export type CruxRouteDescriptor = {
@@ -253,13 +320,21 @@ export async function loadCruxRoutes(cruxDir: string, opts: LoadCruxRoutesOption
   const files = opts.listFiles
     ? await opts.listFiles(cruxDir)
     : await fg('**/*.crux.json', { cwd: cruxDir, dot: true, onlyFiles: true, absolute: true })
-  const globals = await loadGlobals(opts.fileSystem, cruxDir)
+
+  const legacyFiles = opts.listFiles
+    ? (opts.listLegacyFiles ? await opts.listLegacyFiles(cruxDir) : [])
+    : await fg('**/globals.json', { cwd: cruxDir, dot: true, onlyFiles: true, absolute: true })
+  for (const legacy of legacyFiles) {
+    log(`legacy 'globals.json' found at ${legacy}; rename to 'defaults.json' (Dusk Crux 2.0 no longer reads globals.json)`)
+  }
+
   const out: CruxRouteDescriptor[] = []
   for (const file of files) {
     try {
       const cfg = await loadRouteConfig(opts.fileSystem, file)
       const routePath = buildRoutePath(file, cruxDir)
-      const composed = composeCruxConfig(globals, cfg)
+      const defaults = await loadDefaultsChain(opts.fileSystem, cruxDir, path.dirname(file.replace(/[\\/]+/g, path.sep)))
+      const composed = composeCruxConfig(defaults, cfg)
       out.push({ file, routePath, config: composed })
     } catch {
       continue

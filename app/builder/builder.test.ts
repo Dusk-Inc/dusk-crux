@@ -106,6 +106,36 @@ describe("builder", () => {
     expect(hasBad).toBe(false);
   })
   
+  test("route_with_no_options_action__auto_registers_options_preflight_handler", async () => {
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'cors/user', [
+      { name: 'getUser', description: 'get user', req: { method: 'GET' } as any, res: { status: 200, bodyFile: null } as any }
+    ] as any);
+
+    const router = await buildRouterFromFS(cruxDir, { fileSystem: mockFs, listFiles: (root) => Promise.resolve(listVfsCruxFiles(mockFs, root)) });
+    const stack: any[] = (router as any).stack || [];
+    const routes = stack.filter(l => l?.route?.path === '/cors').map(l => l.route);
+    const methods = new Set<string>();
+    for (const r of routes) {
+      for (const k of Object.keys(r.methods || {})) {
+        if (r.methods[k]) methods.add(k);
+      }
+    }
+    expect(methods.has('get')).toBe(true);
+    expect(methods.has('options')).toBe(true);
+  })
+
+  test("route_with_explicit_options_action__does_not_overwrite_with_preflight", async () => {
+    const { mockFs, cruxDir } = createVfs(vfsDir, 'explicit/user', [
+      { name: 'getUser', description: 'get user', req: { method: 'GET' } as any, res: { status: 200, bodyFile: null } as any },
+      { name: 'optsUser', description: 'custom options', req: { method: 'OPTIONS' } as any, res: { status: 200, bodyFile: null } as any }
+    ] as any);
+
+    const router = await buildRouterFromFS(cruxDir, { fileSystem: mockFs, listFiles: (root) => Promise.resolve(listVfsCruxFiles(mockFs, root)) });
+    const stack: any[] = (router as any).stack || [];
+    const optionsLayers = stack.filter(l => l?.route?.path === '/explicit' && l?.route?.methods?.options);
+    expect(optionsLayers.length).toBe(1);
+  })
+
   test("cross_platform_path_handling__works_on_multiple_os", async () => {
     const { mockFs, cruxDir } = createVfs(vfsDir, 'cross/user', [
       { name: 'getCross', description: 'ok', req: { method: 'GET' } as any, res: { status: 200, bodyFile: null } as any }
