@@ -7,16 +7,16 @@
   "main": "dist/cli.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dusk-inc/dusk-crux.git"
+    "url": "git+https://github.com/Dusk-Inc/dusk-crux.git"
   },
   "bugs": {
-    "url": "https://github.com/dusk-inc/dusk-crux/issues"
+    "url": "https://github.com/Dusk-Inc/dusk-crux/issues"
   },
-  "homepage": "https://github.com/dusk-inc/dusk-crux#readme",
+  "homepage": "https://github.com/Dusk-Inc/dusk-crux#readme",
   "funding": [
     {
       "type": "github",
-      "url": "https://github.com/sponsors/dusk-inc"
+      "url": "https://github.com/sponsors/Dusk-Inc"
     }
   ],
   "publishConfig": {
