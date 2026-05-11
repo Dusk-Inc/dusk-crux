@@ -1,0 +1,31 @@
+# Dependency directories — Dockerfile runs `npm install` itself
+node_modules
+.npm
+
+# Build outputs — Dockerfile rebuilds `dist/` from source
+dist
+coverage
+.nyc_output
+*.tsbuildinfo
+
+# VCS + CI metadata
+.git
+.gitignore
+.github
+
+# Repo docs / logs not needed in the image
+readme.md
+LOG.md
+AGENTS.md
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode
+.idea
+*.swp
+.DS_Store
+Thumbs.db
+
+# Sample mock data shipped only as a scaffold resource
+.crux

@@ -1,0 +1,65 @@
+name: Publish to npm
+
+# Authenticates to npm via OIDC trusted publisher (no stored NPM_TOKEN).
+# Trigger by creating a GitHub Release whose tag matches the version in
+# package.json (e.g. tag `v1.0.7` for version `1.0.7`).
+#
+# Setup once on npm side:
+#   https://www.npmjs.com/package/dusk-crux/access  →  add trusted publisher
+#     Provider:    GitHub Actions
+#     Owner:       Dusk-Inc
+#     Repository:  dusk-crux
+#     Workflow:    release.yml
+#     Environment: npm
+#
+# Setup once on GitHub side:
+#   Settings → Environments → New environment "npm"
+#     (optionally restrict deployment branches to `main` and tag refs)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish dusk-crux
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      - name: Use latest npm (required for OIDC trusted publishing)
+        run: npm install -g npm@latest
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Verify package.json version matches release tag
+        if: github.event_name == 'release'
+        run: |
+          pkg_version=$(node -p "require('./package.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$pkg_version" != "$tag" ]; then
+            echo "::error::package.json version ($pkg_version) does not match release tag ($tag)"
+            exit 1
+          fi
+
+      - name: Publish
+        run: npm publish --provenance --access public
