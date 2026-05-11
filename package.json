@@ -1,6 +1,6 @@
 {
   "name": "dusk-crux",
-  "version": "2.0.0",
+  "version": "1.0.7",
   "description": "An API mock library built right into NPX to create self-contained, plug and play API routing.",
   "type": "commonjs",
   "author": "Dusk Inc.",
@@ -51,7 +51,7 @@
   "sideEffects": false,
   "bin": {
     "dusk-crux": "dist/cli.js",
-    "create-dusk-crux": "dist/create.cli.js"
+    "create-dusk-crux": "dist/create/create.cli.js"
   },
   "files": [
     "dist",
