@@ -4,3 +4,7 @@
 /.vscode
 *.tgz
 /verdaccio
+
+# Secrets & environment
+.playwright-mcp
+.tmp
