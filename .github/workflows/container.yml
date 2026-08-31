@@ -1,24 +1,34 @@
-name: Publish container
+name: container
 
-# Builds and pushes the official dusk-crux Docker image to Docker Hub.
+# Builds and pushes the official dusk-crux image to Docker Hub.
 #
-# Tag policy (via docker/metadata-action):
-#   push to main       → :main, :main-<short-sha>
-#   release v1.0.7     → :1.0.7, :1.0, :1, :latest
-#   workflow_dispatch  → :<ref> (manual / debug builds)
+# This repo keeps its own container workflow rather than calling the reusable
+# Dusk-Inc/dusk-workspace/.github/workflows/image.yml, and that is a measured constraint, not
+# an oversight: image.yml covers the SERVICE-kind contain path — it resolves `image_path` off
+# an app's service entry in ocean.workspace.json and stages a dependency closure with
+# `dusk-ocean contain service`. dusk-crux's image comes from a PROJECT-kind contain task, and
+# `WorkspaceProject` in the CLI carries no `image_path` field at all, so there is nothing for
+# image.yml to resolve. When a project variant of image.yml exists this file becomes a caller
+# stub; until then it mirrors image.yml's channel scheme, tag scheme, labels and cache scoping
+# by hand so the two do not drift in behaviour while they differ in form.
 #
-# `:latest` follows the most recent release, not main, so consumers who pin
-# to `:latest` get a tagged version rather than a moving HEAD.
+# The `cache-from: type=gha` technique below is the one this repo proved and image.yml adopted.
+# It is not an optimisation: multi-arch (linux/amd64 + linux/arm64, on every branch) across the
+# fleet is roughly an hour of runner time per fan-out against a 3,000-minute monthly budget.
+# Removing it would put the fan-out back over budget.
 #
-# Auth via Docker Hub access token stored as environment secrets on the
-# `dockerhub` GitHub environment:
-#   DOCKERHUB_USERNAME — the Docker Hub user or org login
-#   DOCKERHUB_TOKEN    — a Docker Hub access token (NOT your password)
-# Set these under Settings → Environments → dockerhub.
+# main REBUILDS from its own tree; it never retags what staging pushed. That is what makes the
+# digest-pinned `FROM` in the Dockerfile load-bearing rather than cosmetic — a floating base
+# means the bytes users encounter are not the bytes that were tested.
+#
+# Auth is read, never written. DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (an access token, never
+# a password) live on the `dockerhub` GitHub environment. This pipeline runs no `gh secret set`.
 
 on:
+  pull_request:
+    branches: [dev, staging, main]
   push:
-    branches: [main]
+    branches: [dev, staging, main]
   release:
     types: [published]
   workflow_dispatch:
@@ -26,65 +36,248 @@ on:
 env:
   IMAGE_NAME: duskinc/dusk-crux
 
+# One in-flight image build per ref. cancel-in-progress is gated on pull request on purpose: a
+# push build interrupted between its immutable tag and its moving channel tag leaves the two
+# disagreeing, which is exactly the state a rollback cannot read.
+concurrency:
+  group: container-dusk-crux-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
   publish:
-    name: Build and push image
     runs-on: ubuntu-latest
     environment: dockerhub
     permissions:
       contents: read
       id-token: write
       attestations: write
-
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      tags: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
+      pushed: ${{ steps.channel.outputs.push }}
     steps:
+      # The ladder is dev -> staging -> main, and main is prod; no prod branch exists on any of
+      # the 44 repos. Every branch builds. Which ones push, and under what tags, is decided
+      # here and nowhere else.
+      #
+      #   pull request  build, push nothing
+      #   dev           :dev-<sha>                                    immutable only
+      #   staging       :staging-<sha> + :staging                     immutable, then moving
+      #   main          :<version> + :main-<sha> + :main + :latest    immutable, then moving
+      #   release v*    :<semver> :<major>.<minor> :<major> :latest   the semver ladder
+      #   other branch  build, push nothing
+      #
+      # The immutable tag is the point. A moving tag alone cannot answer "what is running" and
+      # cannot be rolled back to without a rebuild.
+      - name: Resolve the channel
+        id: channel
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          source_sha="${HEAD_SHA:-$GITHUB_SHA}"
+          sha="${source_sha:0:12}"
+          case "${GITHUB_EVENT_NAME}" in
+            pull_request|pull_request_target) channel=pr ;;
+            release) channel=release ;;
+            *)
+              channel=branch
+              case "${GITHUB_REF_NAME}" in
+                dev|staging|main) channel="${GITHUB_REF_NAME}" ;;
+              esac
+              ;;
+          esac
+          case "${channel}" in
+            dev|staging|main|release) push=true ;;
+            *) push=false ;;
+          esac
+          slug="$(printf '%s' "${GITHUB_REF_NAME}" | tr '/' '-' | tr -cd 'A-Za-z0-9._-')"
+          {
+            echo "channel=${channel}"
+            echo "push=${push}"
+            echo "sha=${sha}"
+            echo "source_sha=${source_sha}"
+            echo "slug=${slug:-detached}"
+          } >> "$GITHUB_OUTPUT"
+          echo "channel=${channel} push=${push} sha=${sha}"
+
+      # Full history: main's immutable tag may come from a v-prefixed tag on HEAD.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A push branch with no registry login fails here, with the secret's name, rather than
+      # forty minutes later at the push. A pull request build needs no credential at all.
+      - name: Check the registry credentials
+        id: creds
+        env:
+          PUSH: ${{ steps.channel.outputs.push }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${PUSH}" != "true" ]; then
+            echo "login=false" >> "$GITHUB_OUTPUT"
+            echo "no push on this ref — no registry credential needed."
+            exit 0
+          fi
+          missing=()
+          [ -n "${DOCKERHUB_USERNAME}" ] || missing+=(DOCKERHUB_USERNAME)
+          [ -n "${DOCKERHUB_TOKEN}" ] || missing+=(DOCKERHUB_TOKEN)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::this ref pushes but ${missing[*]} is unset on the dockerhub environment." >&2
+            echo "  Set it under Settings -> Environments -> dockerhub, or through" >&2
+            echo "  repos/infra/github. CI never provisions its own credentials." >&2
+            exit 1
+          fi
+          echo "login=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22'
           cache: npm
 
-      - name: Install deps
+      - name: Install
         run: npm ci
 
+      # The suite runs before the image is built, not after it is pushed: a red test must cost
+      # a build, never a yank.
       - name: Test
         run: npm test
 
-      - name: Set up QEMU (for arm64 emulation)
+      # Resolution order is deliberate: a v-prefixed tag on HEAD, then the manifest this
+      # project ships, then a sha-suffixed 0.0.0 that is obviously not a release. It never
+      # silently reuses a version, because a duplicate tag would overwrite a shipped image.
+      - name: Resolve the version for main's immutable tag
+        id: version
+        env:
+          SHA: ${{ steps.channel.outputs.sha }}
+        run: |
+          set -euo pipefail
+          version="$(git tag --points-at HEAD --sort=-v:refname \
+            | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+          version="${version#v}"
+          if [ -z "${version}" ] && [ -f package.json ]; then
+            version="$(jq -r '.version // empty' package.json)"
+          fi
+          if [ -z "${version}" ]; then
+            version="0.0.0-${SHA}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}"
+
+      - name: Compose the tag directives
+        id: tags
+        env:
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          SHA: ${{ steps.channel.outputs.sha }}
+          SLUG: ${{ steps.channel.outputs.slug }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          case "${CHANNEL}" in
+            pr)      directives=("type=raw,value=pr-${SHA}") ;;
+            dev)     directives=("type=raw,value=dev-${SHA}") ;;
+            staging) directives=("type=raw,value=staging-${SHA}" "type=raw,value=staging") ;;
+            main)    directives=("type=raw,value=${VERSION}" "type=raw,value=main-${SHA}" \
+                                 "type=raw,value=main" "type=raw,value=latest") ;;
+            release) directives=("type=semver,pattern={{version}}" \
+                                 "type=semver,pattern={{major}}.{{minor}}" \
+                                 "type=semver,pattern={{major}}" \
+                                 "type=raw,value=latest") ;;
+            *)       directives=("type=raw,value=${SLUG}-${SHA}") ;;
+          esac
+          {
+            echo 'directives<<OCEAN_TAGS'
+            for directive in "${directives[@]}"; do
+              echo "${directive}"
+            done
+            echo 'OCEAN_TAGS'
+          } >> "$GITHUB_OUTPUT"
+          printf 'tags: %s\n' "${directives[*]}"
+
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
+        if: steps.creds.outputs.login == 'true'
         uses: docker/login-action@v3
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Compute tags and labels
+      # OCI labels are what make an image traceable back to a commit without a build database.
+      # org.opencontainers.image.revision is set explicitly rather than left to the action's
+      # default because on a pull request `github.sha` is the synthetic merge commit, and the
+      # commit a reviewer needs is the head of the branch.
+      - name: Compute tags and OCI labels
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix=main-,format=short,enable=${{ github.ref == 'refs/heads/main' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+          flavor: latest=false
+          tags: ${{ steps.tags.outputs.directives }}
+          labels: |
+            org.opencontainers.image.title=dusk-crux
+            org.opencontainers.image.description=File-backed mock API server, shipped as a container
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.channel.outputs.source_sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            com.dusk.channel=${{ steps.channel.outputs.channel }}
+            com.dusk.unit=project:dusk-crux
 
+      # The cache scope is named rather than defaulted. GitHub's Actions cache is keyed per
+      # repository, so an unscoped entry here would be evicted by any other build in this repo
+      # and the multi-arch cost would go back to what caching was meant to remove.
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ steps.channel.outputs.push == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          provenance: mode=max
-          sbom: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: ${{ steps.channel.outputs.push == 'true' && 'mode=max' || 'false' }}
+          sbom: ${{ steps.channel.outputs.push == 'true' }}
+          cache-from: type=gha,scope=dusk-crux
+          cache-to: type=gha,mode=max,scope=dusk-crux
+
+      - name: Summarize
+        if: always()
+        env:
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          IMAGE: ${{ env.IMAGE_NAME }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          PUSHED: ${{ steps.channel.outputs.push }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### container — ${IMAGE}"
+            echo
+            echo "| field | value |"
+            echo "| :--- | :--- |"
+            echo "| channel | \`${CHANNEL}\` |"
+            echo "| platforms | \`linux/amd64,linux/arm64\` |"
+            echo "| pushed | \`${PUSHED}\` |"
+            echo "| digest | \`${DIGEST:-none}\` |"
+            echo
+            echo "Tags:"
+            echo '```'
+            echo "${TAGS:-none}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

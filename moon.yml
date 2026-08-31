@@ -1,0 +1,64 @@
+$schema: '../../../.moon/cache/schemas/project.json'
+
+id: 'dusk-crux'
+language: 'typescript'
+layer: 'tool'
+stack: 'backend'
+
+# The public mirror this Unit is split out to. splitsh reads it from the live
+# project graph as project.metadata.mirror; a Unit with no mirror field is
+# private, so absence is the marker and no exclusion list is maintained.
+project:
+  mirror: 'https://github.com/Dusk-Inc/dusk-crux'
+
+tasks:
+  build:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'npm run build'
+    deps:
+      - '~:check-remote-cache'
+    options:
+      mergeArgs: 'replace'
+  # shell: false - the command is already `bash`, and moon's outer shell wrapper
+  # re-composes the argv into a string it cannot quote once the script contains a
+  # single quote. Without it this task's script reaches bash as its first word alone.
+  contain:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'VERSION=$(node -p "require(''./package.json'').version") && docker build --tag "duskinc/dusk-crux:$VERSION" --tag duskinc/dusk-crux:latest .'
+    deps:
+      - '~:check-remote-cache'
+    options:
+      cache: false
+      mergeArgs: 'replace'
+      runInCI: false
+      shell: false
+  install:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'npm install'
+    options:
+      cache: false
+      mergeArgs: 'replace'
+      runInCI: false
+  publish:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'npm publish --access public'
+    options:
+      cache: false
+      runInCI: false
+  test:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'npm test'
+    deps:
+      - '~:check-remote-cache'
+    options:
+      mergeArgs: 'replace'

@@ -18,7 +18,11 @@
 #   docker run dusk-crux --port 5000 --root /mnt/api
 
 # --- Stage 1: compile TypeScript to dist/ ---
-FROM node:22-alpine AS build
+# The base is pinned to the multi-arch index digest of node:22-alpine, resolved with
+# `docker buildx imagetools inspect`. main rebuilds rather than retags, so a floating tag
+# would mean the bytes users encounter are not the bytes that were tested; re-resolve the
+# digest deliberately when the base is meant to move.
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS build
 
 WORKDIR /src
 
@@ -30,7 +34,7 @@ COPY resources ./resources
 RUN npm run build
 
 # --- Stage 2: minimal runtime image ---
-FROM node:22-alpine AS runtime
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runtime
 
 # The CLI requires --root to be inside the current working directory, so we
 # stage the install under /opt/dusk-crux and run from /, where /crux can live.
