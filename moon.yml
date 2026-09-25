@@ -36,6 +36,19 @@ tasks:
       mergeArgs: 'replace'
       runInCI: false
       shell: false
+  # Pushes the tags `contain` builds; the inherited push needs IMAGE_PATH.
+  push:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'VERSION=$(node -p "require(''./package.json'').version") && docker push "duskinc/dusk-crux:$VERSION" && docker push duskinc/dusk-crux:latest'
+    deps:
+      - '~:contain'
+    options:
+      cache: false
+      mergeArgs: 'replace'
+      runInCI: false
+      shell: false
   install:
     command: 'bash'
     args:
