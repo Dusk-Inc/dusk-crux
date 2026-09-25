@@ -166,3 +166,9 @@ npm run start
 ```
 
 `npm run start` mirrors `npm run dusk-crux` and launches the server against the local `.crux` fixtures for package development.
+
+## Container image
+The `Dockerfile` builds a runtime image that serves the `.crux` tree at `/crux` on port 4000.
+- Volume mount: for development, mount the fixtures read-only, for example `volumes: ["./api/.crux:/crux:ro"]` with `ports: ["4000:4000"]`; edits hot-reload.
+- Derived image: for CI and staging, build a hermetic image with `FROM dusk-crux:<version>` followed by `COPY .crux /crux`.
+- Overrides: append CLI args to replace the defaults, for example `docker run dusk-crux --port 5000 --root /mnt/api`. The `--root` path must be inside the working directory, which is `/` in the image.
