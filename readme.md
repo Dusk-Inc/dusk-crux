@@ -4,6 +4,23 @@
 
 Dusk Crux bootstraps a file-backed mock API server. Generate a `.crux` workspace and start the watcher-driven server without leaving your project root.
 
+## Terms
+- Crux tree: The `.crux` directory whose folders map to HTTP routes, with bracketed folders such as `[id]` becoming dynamic path parameters.
+- Route file: A `*.crux.json` file in a route's folder that declares the route's `globals` and `actions`, typed as `CruxConfig`.
+- Action: One entry in a route file's `actions`, an `ActionSpec` with a `name`, a `description`, a `req` to match and a `res` to send.
+- RequestSpec: An action's `req`: the `method`, `params`, `query`, `headers` policy and optional `body` expectations a request must match.
+- ResponseSpec: An action's `res`: the `status`, `headers` and optional `bodyFile` the server sends back.
+- bodyFile: A fixture file path in a response, resolved inside the route directory and streamed back with an inferred `Content-Type`.
+- defaults.json: A file that sets `req` and `res` defaults for every route beneath its folder, deep-merged from the root down before the route file's `globals`.
+- globals: A route file's block of shared `req`, `res` and `diagnostics` settings, merged over the cascaded defaults and under each action.
+- HeaderPolicy: The `headers` block of a request spec, holding a header `schema` and a `policy` of `permissive`, `warn` or `strict`.
+- Action matching: The rule that picks the first action whose method, params, headers and query all match the request, answering 405 or 400 when none does.
+- ValidationIssue: One finding from the validator, with a `ValidationCode` such as `ACTIONS_EMPTY` or `STATUS_INVALID` and a severity of `error`, `warning` or `info`.
+- Auto-preflight: The `OPTIONS` handler registered on every route that answers 204 with the merged response headers, unless the route declares its own `OPTIONS` action.
+- Route index: The `GET /` response that lists every discovered route, its dynamic params and its actions.
+- Health check: The `GET /health` response that runs the validator over every loaded config and returns its diagnostics.
+- CLI commands: `dusk-crux init`, which scaffolds the Crux tree and the `dusk-crux` npm script, and `dusk-crux run`, which starts the watcher-driven server on port 4000 by default.
+
 ## Quickstart
 
 ```bash
