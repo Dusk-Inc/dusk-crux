@@ -28,7 +28,7 @@ tasks:
     command: 'bash'
     args:
       - '-c'
-      - 'VERSION=$(node -p "require(''./package.json'').version") && docker build --tag "duskinc/dusk-crux:$VERSION" --tag duskinc/dusk-crux:latest .'
+      - 'VERSION=$(node -p "require(''./package.json'').version") && docker buildx build ${CONTAIN_OUTPUT:---load} --tag "duskinc/dusk-crux:$VERSION" --tag duskinc/dusk-crux:latest .'
     deps:
       - '~:check-remote-cache'
     options:
