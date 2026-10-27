@@ -2,8 +2,8 @@
 # Usage and derived-image pattern: see readme.md "Container image".
 
 # --- Stage 1: compile TypeScript to dist/ ---
-# Pinned to the node:22-alpine multi-arch index digest; re-resolve it with `docker buildx imagetools inspect` only to move the base.
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS build
+# Pinned to the node:22.23.4-alpine multi-arch index digest; re-resolve it with `docker buildx imagetools inspect` only to move the base.
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
 
 WORKDIR /src
 
@@ -15,7 +15,7 @@ COPY resources ./resources
 RUN npm run build
 
 # --- Stage 2: minimal runtime image ---
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runtime
+FROM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runtime
 
 # The CLI requires --root inside cwd, so the install lives under /opt/dusk-crux and the image runs from /.
 WORKDIR /opt/dusk-crux
